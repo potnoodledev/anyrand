@@ -55,7 +55,7 @@ yarn quickstart:local
 This single command will:
 1. ✅ Deploy the AnyrandConsumer contract automatically
 2. ✅ Submit a randomness request
-3. ✅ Wait for the beacon round
+3. ✅ Generate test beacon signature (skips wait since fulfillment will fail)
 4. ✅ Attempt fulfillment (demonstrates the complete flow)
 5. ✅ Show contract deployment addresses for future use
 
@@ -80,13 +80,11 @@ STEP 3: Request Randomness
 - Request ID: 1
 - Target beacon round: 564321
 
-STEP 4: Wait for Beacon Round
-✅ Round is now available!
-
-STEP 5: Generate Beacon Signature
+STEP 4: Generate Beacon Signature
 ✅ Signature generated for round 564321
+Note: Skipping beacon round wait since fulfillment will fail with test signature
 
-STEP 6: Fulfill Randomness Request
+STEP 5: Fulfill Randomness Request
 ❌ Fulfillment failed (expected in local testing)
 ✅ The request/fulfillment flow structure is working correctly!
 

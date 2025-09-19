@@ -6,6 +6,7 @@ import {
 } from '../typechain-types'
 import { formatEther, formatUnits, getBytes, keccak256, parseEther } from 'ethers'
 import { bn254 } from '@kevincharm/noble-bn254-drand'
+import * as dotenv from 'dotenv'
 
 /**
  * Complete Anyrand Quickstart for Local Development
@@ -28,9 +29,8 @@ import { bn254 } from '@kevincharm/noble-bn254-drand'
 // CONFIGURATION
 // ============================================================================
 
-// Default addresses - these will be used if environment variables aren't set
-const DEFAULT_ANYRAND_ADDRESS = '0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9'
-const DEFAULT_BEACON_ADDRESS = '0x5FbDB2315678afecb367f032d93F642f64180aa3'
+// Load environment variables
+dotenv.config()
 
 async function main() {
     console.log('🚀 Anyrand Local Quickstart')
@@ -56,13 +56,27 @@ async function main() {
     }
     console.log('')
 
-    // Determine contract addresses
-    const ANYRAND_ADDRESS = process.env.ANYRAND_ADDRESS || DEFAULT_ANYRAND_ADDRESS
-    const BEACON_ADDRESS = process.env.BEACON_ADDRESS || DEFAULT_BEACON_ADDRESS
+    // Get contract addresses from .env file (required)
+    const ANYRAND_ADDRESS = process.env.ANYRAND_LOCAL_ADDRESS
+    const BEACON_ADDRESS = process.env.BEACON_LOCAL_ADDRESS
 
-    console.log('Using contract addresses:')
+    if (!ANYRAND_ADDRESS || !BEACON_ADDRESS) {
+        console.error('❌ Missing required contract addresses in .env file')
+        console.error('')
+        console.error('Please run the deployment first:')
+        console.error('  yarn deploy:local')
+        console.error('')
+        console.error('This will create a .env file with the required addresses:')
+        console.error('  ANYRAND_LOCAL_ADDRESS=0x...')
+        console.error('  BEACON_LOCAL_ADDRESS=0x...')
+        console.error('')
+        process.exit(1)
+    }
+
+    console.log('Using contract addresses from .env file:')
     console.log('- Anyrand:', ANYRAND_ADDRESS)
     console.log('- Beacon:', BEACON_ADDRESS)
+    console.log('✅ Addresses loaded from deployment')
     console.log('')
 
     // Validate Anyrand deployment
@@ -168,69 +182,23 @@ async function main() {
     console.log('')
 
     // ========================================================================
-    // STEP 4: WAIT FOR BEACON ROUND
+    // STEP 4: GENERATE BEACON SIGNATURE (SKIP WAIT FOR LOCAL TESTING)
     // ========================================================================
-    console.log('STEP 4: Wait for Beacon Round')
-    console.log('-------------------------------------\n')
-
-    // Get beacon parameters
-    let beaconGenesis: bigint
-    let beaconPeriod: bigint
-
-    try {
-        beaconGenesis = await beacon.genesisTimestamp()
-        beaconPeriod = await beacon.period()
-    } catch (error) {
-        console.log('Using default beacon parameters for local testing')
-        beaconGenesis = 1692803367n // Default evmnet genesis
-        beaconPeriod = 3n // 3 second period
-    }
-
-    console.log('Beacon configuration:')
-    console.log('- Genesis timestamp:', beaconGenesis.toString())
-    console.log('- Period:', beaconPeriod.toString(), 'seconds')
-    console.log('')
-
-    // Calculate wait time
-    const roundTimestamp = Number(beaconGenesis) + (Number(round) - 1) * Number(beaconPeriod)
-    const currentTime = Math.floor(Date.now() / 1000)
-    const waitTime = Math.max(0, roundTimestamp - currentTime)
-
-    console.log('Round timing:')
-    console.log('- Round', round.toString(), 'available at:', new Date(roundTimestamp * 1000).toLocaleString())
-    console.log('- Current time:', new Date(currentTime * 1000).toLocaleString())
-
-    if (waitTime > 0) {
-        console.log(`- Waiting ${waitTime} seconds for round availability...\n`)
-
-        // Countdown display
-        for (let i = waitTime; i > 0; i--) {
-            process.stdout.write(`\r⏳ Time remaining: ${i} seconds...`)
-            await new Promise(resolve => setTimeout(resolve, 1000))
-        }
-        console.log('\n✅ Round is now available!')
-    } else {
-        console.log('✅ Round is already available!')
-    }
-    console.log('')
-
-    // ========================================================================
-    // STEP 5: GENERATE BEACON SIGNATURE
-    // ========================================================================
-    console.log('STEP 5: Generate Beacon Signature')
+    console.log('STEP 4: Generate Beacon Signature')
     console.log('-------------------------------------\n')
 
     console.log('Generating test signature for local environment...')
-    console.log('(Production would fetch from drand API)')
+    console.log('(Production would fetch from drand API after waiting for beacon round)')
+    console.log('Note: Skipping beacon round wait since fulfillment will fail with test signature')
 
     const signature = await generateLocalBeaconSignature(round, beacon)
     console.log('✅ Signature generated for round', round.toString())
     console.log('')
 
     // ========================================================================
-    // STEP 6: FULFILL RANDOMNESS REQUEST
+    // STEP 5: FULFILL RANDOMNESS REQUEST
     // ========================================================================
-    console.log('STEP 6: Fulfill Randomness Request')
+    console.log('STEP 5: Fulfill Randomness Request')
     console.log('-------------------------------------\n')
 
     const anyrandFulfiller = anyrand.connect(fulfiller)
@@ -302,9 +270,9 @@ async function main() {
     }
 
     // ========================================================================
-    // STEP 7: VERIFY RESULT
+    // STEP 6: VERIFY RESULT
     // ========================================================================
-    console.log('STEP 7: Verify Result')
+    console.log('STEP 6: Verify Result')
     console.log('-------------------------------------\n')
 
     // Check consumer contract state
