@@ -57,6 +57,7 @@ async function main() {
             },
         },
     })
+    console.log(`Drand beacon deployed at ${await drandBeacon.getAddress()}`)
 
     // Gas station
     const { gasStationEthereum } = await ignition.deploy(GasStationEthereum, {
