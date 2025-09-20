@@ -11,6 +11,7 @@
     "deploy:base": "yarn hardhat --config hardhat.config.base.ts --network base run scripts/deployAnyrandBase.ts",
     "deploy:local": "yarn hardhat --network localhost run scripts/deployAnyrandLocal.ts",
     "quickstart:local": "yarn hardhat --network localhost run scripts/quickstartLocal.ts",
+    "quickstart:scrollSepolia": "yarn hardhat --config hardhat.config.scrollSepolia.ts --network scrollSepolia run scripts/quickstartScrollSepolia.ts",
     "format:check": "yarn prettier --check .",
     "format": "yarn prettier --write .",
     "build": "yarn hardhat compile",
