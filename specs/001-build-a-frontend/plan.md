@@ -30,27 +30,27 @@
 - Phase 3-4: Implementation execution (manual or via tools)
 
 ## Summary
-Build a comprehensive frontend application for Anyrand's verifiable randomness service using Next.js 15, React 19, TypeScript, and Wagmi v2 for wallet connectivity. The application will enable users to connect wallets, request randomness, fulfill pending requests, and view transaction history with real-time status updates and blockchain integration.
+Build a comprehensive frontend application for Anyrand's verifiable randomness service, enabling users to connect wallets, request randomness, fulfill pending requests, and view transaction history with real-time status updates. The application will provide a complete Web3 interface for interacting with Anyrand smart contracts across multiple networks.
 
 ## Technical Context
-**Language/Version**: TypeScript 5.7.2, Node.js 18+
-**Primary Dependencies**: Next.js 15.1.2, React 19.0.0, Wagmi 2.14.6, Viem 2.21.57, TanStack Query 5.62.10, Radix UI, Tailwind CSS 3.4.17
-**Storage**: Local state management with React Query for caching, localStorage for user preferences
-**Testing**: Vitest for unit testing, Playwright for E2E testing, React Testing Library for component testing
-**Target Platform**: Web application (responsive design for desktop and mobile browsers)
-**Project Type**: Web application (frontend only, connects to existing smart contracts)
-**Performance Goals**: <3s initial load time, <200ms interaction response, optimized for mobile networks
-**Constraints**: Must work with existing Anyrand smart contracts, responsive design required, secure wallet integration mandatory
-**Scale/Scope**: Single-page application with ~5-8 main views, targeting crypto users and developers
+**Language/Version**: TypeScript 5.7, React 19, Node.js 18+
+**Primary Dependencies**: Next.js 15, Wagmi 2.14, Viem 2.21, Reown AppKit 1.6, TanStack Query 5.62, Radix UI, Tailwind CSS
+**Storage**: React Query cache, localStorage for preferences, no persistent backend
+**Testing**: Vitest, React Testing Library, Playwright for E2E, blockchain-specific mocking
+**Target Platform**: Web application with responsive design for desktop and mobile browsers
+**Project Type**: web - frontend application connecting to existing smart contracts
+**Performance Goals**: <3s initial load, <200ms interactions, optimized for mobile networks
+**Constraints**: Must work with existing Anyrand contracts, secure wallet integration, responsive design mandatory
+**Scale/Scope**: Single-page application, 5-8 main views, crypto users and developers target audience
 
 ## Constitution Check
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-**Test-First Development**: ✅ PASS - Will implement comprehensive testing strategy with unit, integration, and E2E tests
-**Code Quality Standards**: ✅ PASS - Using TypeScript strict mode, ESLint, Prettier, and established React patterns
-**Security-First Architecture**: ✅ PASS - Secure wallet integration, input validation, no private key exposure, HTTPS enforcement
-**Performance Optimization**: ✅ PASS - Next.js optimization features, code splitting, lazy loading, React optimization patterns
-**User Experience Consistency**: ✅ PASS - Responsive design, consistent error handling, loading states, clear transaction flows
+**Test-First Development**: ✅ PASS - Comprehensive testing strategy with unit, integration, and E2E tests
+**Code Quality Standards**: ✅ PASS - TypeScript strict mode, ESLint, Prettier, established React patterns
+**Security-First Architecture**: ✅ PASS - Secure wallet integration, input validation, no private key exposure
+**Performance Optimization**: ✅ PASS - Next.js optimizations, React patterns, blockchain-specific caching
+**User Experience Consistency**: ✅ PASS - Responsive design, consistent error handling, clear workflows
 
 ## Project Structure
 
@@ -67,39 +67,39 @@ specs/001-build-a-frontend/
 
 ### Source Code (repository root)
 ```
-# Option 2: Web application (frontend detected)
+# Option 2: Web application (when "frontend" + "backend" detected)
 frontend/
 ├── src/
-│   ├── app/            # Next.js 15 App Router
-│   ├── components/     # React components (UI + feature)
+│   ├── app/            # Next.js App Router pages
+│   ├── components/     # React components
 │   ├── hooks/          # Custom React hooks
-│   ├── lib/            # Utilities and configuration
+│   ├── lib/            # Utilities and config
 │   ├── abi/            # Smart contract ABIs
-│   └── types/          # TypeScript type definitions
+│   └── types/          # TypeScript definitions
 ├── public/             # Static assets
-├── tests/              # Test files (unit, integration, E2E)
-└── package.json        # Dependencies and scripts
+├── tests/              # Test files
+└── package.json        # Dependencies
 ```
 
-**Structure Decision**: Option 2 - Web application structure with dedicated frontend/ directory
+**Structure Decision**: Option 2 - Web application with dedicated frontend/ directory
 
 ## Phase 0: Outline & Research
 1. **Extract unknowns from Technical Context** above:
-   - Reference project analysis → best practices extraction
-   - Anyrand contract integration patterns → ABI and interaction methods
-   - Wallet connection patterns → Reown AppKit vs WalletConnect comparison
-   - State management approach → React Query + Zustand evaluation
+   - Reference project analysis → best practices extraction from lottopgf-v1-frontend
+   - Anyrand contract integration → ABI patterns and interaction methods
+   - Wallet connection patterns → Reown AppKit integration best practices
+   - Testing strategy → blockchain-specific testing approaches
 
 2. **Generate and dispatch research agents**:
    ```
-   For reference project stack analysis:
+   For reference project analysis:
      Task: "Analyze lottopgf-v1-frontend architecture and extract reusable patterns"
+   For contract integration:
+     Task: "Document Anyrand smart contract integration patterns and interfaces"
    For wallet integration:
-     Task: "Research best practices for Reown AppKit and Wagmi integration"
-   For blockchain interaction:
-     Task: "Document Anyrand smart contract integration patterns"
+     Task: "Research Reown AppKit and Wagmi best practices for Web3 applications"
    For testing strategy:
-     Task: "Define testing approach for React + blockchain applications"
+     Task: "Define comprehensive testing approach for React blockchain applications"
    ```
 
 3. **Consolidate findings** in `research.md` using format:
