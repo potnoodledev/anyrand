@@ -7,7 +7,7 @@ import {
 import { formatEther, formatUnits, getBytes, keccak256, parseEther } from 'ethers'
 import { bn254 } from '@kevincharm/noble-bn254-drand'
 import * as dotenv from 'dotenv'
-import { getDrandBeaconRound, decodeG1 } from '../lib/drand'
+import { getDrandBeaconRound, getDrandBeaconInfo } from '../lib/drand'
 
 /**
  * Complete Anyrand Quickstart for Scroll Sepolia Testnet
@@ -174,6 +174,15 @@ async function main() {
     // Connect to contracts
     const beacon = DrandBeacon__factory.connect(BEACON_ADDRESS, deployer)
 
+    // Debug: Check beacon configuration
+    console.log('Verifying beacon configuration...')
+    try {
+        const beaconPubKeyHash = await beacon.publicKeyHash()
+        console.log('- Beacon public key hash:', beaconPubKeyHash)
+    } catch (e) {
+        console.log('- Could not fetch beacon public key hash')
+    }
+
     // Configuration
     const callbackGasLimit = 100_000
     const deadline = Math.floor(Date.now() / 1000) + 120 // 2 minutes from now (more time for testnet)
@@ -297,14 +306,27 @@ async function main() {
     let signature: [bigint, bigint]
 
     try {
+        // First, let's verify the evmnet beacon configuration
+        console.log('Fetching evmnet beacon info from drand...')
+        const evmnetInfo = await getDrandBeaconInfo('evmnet')
+        console.log('- evmnet public_key:', evmnetInfo.public_key)
+        console.log('- evmnet genesis_time:', evmnetInfo.genesis_time)
+        console.log('- evmnet period:', evmnetInfo.period)
+
         // Fetch the actual signature from drand API for the evmnet beacon
         const drandRound = await getDrandBeaconRound('evmnet', Number(round))
         console.log('✅ Fetched drand round', round.toString(), 'from network')
+        console.log('- Round number:', drandRound.round)
+        console.log('- Signature hex:', drandRound.signature)
 
-        // Decode the G1 point signature
-        signature = decodeG1(drandRound.signature)
+        // Decode the G1 point signature using the correct method
+        const sigPoint = bn254.G1.ProjectivePoint.fromHex(drandRound.signature).toAffine()
+        signature = [sigPoint.x, sigPoint.y]
+
         console.log('✅ Real BLS signature decoded successfully')
-        console.log('- Signature will be cryptographically valid')
+        console.log('- Signature X:', '0x' + signature[0].toString(16))
+        console.log('- Signature Y:', '0x' + signature[1].toString(16))
+        console.log('- This signature is cryptographically valid from drand')
         console.log('')
     } catch (error: any) {
         console.log('⚠️  Failed to fetch from drand API:', error.message)
@@ -334,9 +356,10 @@ async function main() {
     let actualGasUsed: bigint
 
     try {
+        // IMPORTANT: The requester is the consumer contract, not the deployer EOA!
         const fulfillTx = await anyrandFulfiller.fulfillRandomness(
             requestId,
-            deployer.address,
+            consumerAddress,  // Use consumer address, not deployer address
             pubKeyHash,
             round,
             callbackGasLimit,
@@ -369,28 +392,61 @@ async function main() {
 
     } catch (error: any) {
         console.log('❌ Fulfillment failed')
-        console.log('Error:', error.message)
+        console.log('Full error:', error)
+        console.log('')
 
-        if (error.message.includes('InvalidSignature')) {
+        // Try to decode the error
+        if (error.data) {
+            console.log('Error data:', error.data)
+            try {
+                const decodedError = anyrand.interface.parseError(error.data)
+                console.log('Decoded error:', decodedError)
+                console.log('Error name:', decodedError?.name)
+                console.log('Error args:', decodedError?.args)
+            } catch (decodeError) {
+                console.log('Could not decode error data')
+            }
+        }
+
+        if (error.reason) {
+            console.log('Error reason:', error.reason)
+        }
+
+        if (error.code) {
+            console.log('Error code:', error.code)
+        }
+
+        // Log transaction details for debugging
+        console.log('\nDebug Information:')
+        console.log('- Request ID:', requestId.toString())
+        console.log('- Requester (consumer contract):', consumerAddress)
+        console.log('- Fulfiller (EOA):', (fulfiller || deployer).address)
+        console.log('- Round:', round.toString())
+        console.log('- PubKeyHash:', pubKeyHash)
+        console.log('- Callback Gas Limit:', callbackGasLimit)
+        console.log('- Signature[0]:', '0x' + signature[0].toString(16))
+        console.log('- Signature[1]:', '0x' + signature[1].toString(16))
+        console.log('')
+
+        // Specific error handling
+        if (error.message?.includes('InvalidSignature') || error.reason?.includes('InvalidSignature')) {
+            console.log('🔍 InvalidSignature Error Detected')
+            console.log('The beacon contract rejected the signature.')
+            console.log('This means the BLS signature verification failed.')
             console.log('')
-            console.log('Signature verification failed. This can happen if:')
-            console.log('1. The drand API was unavailable and we used a test signature')
-            console.log('2. There\'s a mismatch between the beacon configuration')
-            console.log('3. The signature encoding is incorrect')
+        } else if (error.message?.includes('InvalidRequestHash') || error.reason?.includes('InvalidRequestHash')) {
+            console.log('🔍 InvalidRequestHash Error Detected')
+            console.log('The request hash doesn\'t match what\'s stored.')
+            console.log('Check that all parameters match the original request.')
             console.log('')
-        } else if (error.message.includes('InvalidRequestHash')) {
+        } else if (error.message?.includes('InvalidRequestState') || error.reason?.includes('InvalidRequestState')) {
+            console.log('🔍 InvalidRequestState Error Detected')
+            console.log('The request is not in a valid state for fulfillment.')
+            console.log('It may have already been fulfilled or expired.')
             console.log('')
-            console.log('Request hash validation failed. This can happen if:')
-            console.log('1. The request parameters don\'t match')
-            console.log('2. The request was already fulfilled')
-            console.log('3. The request state changed')
-            console.log('')
-        } else if (error.message.includes('execution reverted')) {
-            console.log('')
-            console.log('Transaction reverted. Common causes:')
-            console.log('1. Insufficient gas for callback')
-            console.log('2. Request already fulfilled')
-            console.log('3. Request expired or invalid state')
+        } else {
+            console.log('🔍 Unknown Error')
+            console.log('Check the full error details above for more information.')
             console.log('')
         }
 
