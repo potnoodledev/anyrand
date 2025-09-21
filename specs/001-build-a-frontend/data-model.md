@@ -1,238 +1,195 @@
-# Data Model: Anyrand Frontend Application
+# Data Model: Anyrand Frontend - Phase 1 Wallet Authentication
 
 **Date**: 2025-09-20
 **Phase**: Phase 1 - Design & Contracts
+**Focus**: Wallet connection and session management entities
 
 ## Core Entities
 
-### RandomnessRequest
-Represents a user's request for verifiable randomness from the Anyrand system.
+### WalletSession
+Represents an authenticated wallet connection session.
 
 **Fields**:
-- `requestId: bigint` - Unique identifier for the request
-- `requester: Address` - Address of the user/contract that requested randomness
-- `deadline: number` - Unix timestamp when randomness should be available
-- `callbackGasLimit: bigint` - Gas limit allocated for the callback function
-- `feePaid: bigint` - Amount of ETH paid for the request (in wei)
-- `effectiveFeePerGas: bigint` - Gas price used for fee calculation
-- `pubKeyHash: string` - Hash of the drand beacon public key
-- `round: bigint` - Target drand beacon round for randomness generation
-- `status: RequestState` - Current state of the request
-- `randomness?: bigint` - The generated random value (if fulfilled)
-- `callbackSuccess?: boolean` - Whether the callback succeeded (if fulfilled)
-- `actualGasUsed?: bigint` - Gas actually consumed during fulfillment
-- `transactionHash: string` - Hash of the request transaction
-- `blockNumber: number` - Block number where request was mined
-- `timestamp: number` - Unix timestamp when request was submitted
+- `address: `0x${string}` | undefined` - Connected wallet address
+- `connector: Connector | undefined` - Active wallet connector instance
+- `chainId: number | undefined` - Current chain ID
+- `isConnected: boolean` - Connection status
+- `isConnecting: boolean` - Connection in progress
+- `isReconnecting: boolean` - Reconnection in progress
+- `status: 'connected' | 'disconnected' | 'connecting' | 'reconnecting'` - Session status
 
 **State Transitions**:
-- `Nonexistent` → `Pending` (when request is submitted)
-- `Pending` → `Fulfilled` (when randomness is provided)
-- `Pending` → `Failed` (when fulfillment fails)
+- `disconnected` → `connecting` (when user initiates connection)
+- `connecting` → `connected` (when wallet approves)
+- `connecting` → `disconnected` (when user rejects or times out)
+- `connected` → `disconnected` (when user disconnects)
+- `disconnected` → `reconnecting` (when auto-reconnecting)
+- `reconnecting` → `connected` (when reconnection succeeds)
+- `reconnecting` → `disconnected` (when reconnection fails)
 
 **Validation Rules**:
-- `deadline` must be in the future when submitted
-- `callbackGasLimit` must not exceed contract maximum
-- `feePaid` must match calculated request price
-- `requester` must be a valid Ethereum address
+- `address` must be a valid Ethereum address when connected
+- `chainId` must match supported networks when connected
+- `connector` must be non-null when connected
 
-### Transaction
-Represents blockchain transactions related to randomness operations.
-
-**Fields**:
-- `hash: string` - Transaction hash
-- `type: TransactionType` - Type of transaction (request, fulfillment)
-- `from: Address` - Sender address
-- `to: Address` - Recipient address (Anyrand contract)
-- `value: bigint` - ETH value transferred (in wei)
-- `gasLimit: bigint` - Gas limit set for transaction
-- `gasUsed?: bigint` - Actual gas consumed
-- `gasPrice: bigint` - Gas price used
-- `blockNumber?: number` - Block number (when confirmed)
-- `blockHash?: string` - Block hash (when confirmed)
-- `confirmations: number` - Number of confirmations
-- `status: TransactionStatus` - Current status
-- `timestamp: number` - Unix timestamp when submitted
-- `relatedRequestId?: bigint` - Associated request ID (if applicable)
-
-**State Transitions**:
-- `Pending` → `Confirmed` (when mined)
-- `Pending` → `Failed` (if reverted)
-- `Confirmed` → `Replaced` (if reorganized)
-
-### UserSession
-Represents a connected wallet session and user preferences.
+### NetworkInfo
+Represents blockchain network configuration and state.
 
 **Fields**:
-- `address: Address` - Connected wallet address
-- `chainId: number` - Current network chain ID
-- `isConnected: boolean` - Connection status
-- `walletType: string` - Type of wallet (MetaMask, WalletConnect, etc.)
-- `balance: string` - ETH balance (formatted)
-- `ensName?: string` - ENS name if available
-- `lastConnected: number` - Unix timestamp of last connection
-- `preferences: UserPreferences` - User-specific settings
+- `chainId: number` - Network chain ID
+- `name: string` - Human-readable network name
+- `currency: { name: string; symbol: string; decimals: number }` - Native currency info
+- `rpcUrls: { default: { http: string[]; webSocket?: string[] } }` - RPC endpoints
+- `blockExplorers: { default: { name: string; url: string } }` - Block explorer links
+- `contracts?: Record<string, { address: `0x${string}` }>` - Contract addresses
+- `testnet: boolean` - Whether this is a test network
 
-**Relationships**:
-- One session can have many `RandomnessRequest` entities
-- Session tracks all transactions for the connected address
+**Validation Rules**:
+- `chainId` must be a positive integer
+- `rpcUrls` must contain at least one valid HTTP endpoint
+- `currency.decimals` typically 18 for EVM chains
 
-### PendingRequest
-Represents randomness requests from other users available for fulfillment.
+### ConnectionState
+Represents the current state of wallet connection UI and flow.
 
 **Fields**:
-- `requestId: bigint` - Request identifier
-- `requester: Address` - Original requester address
-- `deadline: number` - Request deadline
-- `round: bigint` - Target drand round
-- `callbackGasLimit: bigint` - Callback gas allocation
-- `estimatedEarnings: bigint` - Potential earnings from fulfillment
-- `timeUntilFulfillable: number` - Seconds until fulfillment possible
-- `complexity: FulfillmentComplexity` - Difficulty/risk level
-- `networkGasCost: bigint` - Estimated gas cost for fulfillment
+- `isOpen: boolean` - Whether connection modal is open
+- `view: 'Connect' | 'Account' | 'Networks' | 'WhatIsAWallet' | 'WhatIsANetwork'` - Current modal view
+- `qrCodeUri: string | undefined` - WalletConnect QR code data
+- `pairingUri: string | undefined` - Deep link URI for mobile wallets
+- `selectedWallet: WalletInfo | undefined` - Currently selected wallet for connection
+- `error: Error | undefined` - Current connection error if any
+
+**State Management**:
+- Modal state managed by Reown AppKit
+- QR codes generated on connection initiation
+- Error states cleared on new connection attempts
+
+### UserAccount
+Represents the connected user's account information.
+
+**Fields**:
+- `address: `0x${string}`` - Wallet address
+- `ensName: string | null` - ENS name if available
+- `ensAvatar: string | null` - ENS avatar URL if available
+- `balance: { value: bigint; formatted: string; symbol: string }` - Native token balance
+- `isContract: boolean` - Whether address is a smart contract
+- `displayName: string` - Formatted display name (ENS or truncated address)
 
 **Derived Fields**:
-- `profitMargin: bigint` - `estimatedEarnings - networkGasCost`
-- `isReadyForFulfillment: boolean` - Whether deadline has passed
-- `riskLevel: RiskLevel` - Based on gas costs and potential earnings
+- `displayName`: Returns ENS name if available, otherwise truncated address
+- `truncatedAddress`: Format as `0x1234...5678`
 
-### DrandRound
-Represents the current state of the drand beacon system.
+### SessionStorage
+Represents persisted session data for maintaining authentication.
 
 **Fields**:
-- `currentRound: bigint` - Latest available drand round
-- `roundTimestamp: number` - Timestamp of current round
-- `nextRoundTime: number` - Expected time of next round
-- `beaconPeriod: number` - Time between rounds (seconds)
-- `genesisTime: number` - Beacon genesis timestamp
-- `pubKeyHash: string` - Current beacon public key hash
-- `isHealthy: boolean` - Whether beacon is operating normally
+- `connectorId: string | null` - ID of last used connector
+- `chainId: number | null` - Last connected chain
+- `address: `0x${string}` | null` - Last connected address
+- `timestamp: number` - Last connection timestamp
+- `expiresAt: number` - Session expiration timestamp
 
-**Calculations**:
-- `roundForDeadline(deadline: number): bigint` - Calculate target round for deadline
-- `timeUntilRound(round: bigint): number` - Time until specific round available
+**Persistence Rules**:
+- Stored in cookies for SSR compatibility
+- 7-day default expiration
+- Cleared on explicit disconnect
+- Validated on restore
 
-## Type Definitions
+## Supporting Types
 
-### Enums
+### WalletInfo
+Information about available wallet providers.
 
-```typescript
-enum RequestState {
-  Nonexistent = 0,
-  Pending = 1,
-  Fulfilled = 2,
-  Failed = 3
-}
+**Fields**:
+- `id: string` - Unique wallet identifier
+- `name: string` - Wallet display name
+- `icon: string` - Wallet icon URL
+- `downloadUrl?: string` - Download link if not installed
+- `installed: boolean` - Whether wallet is installed
+- `recent: boolean` - Whether recently used
 
-enum TransactionStatus {
-  Pending = 'pending',
-  Confirmed = 'confirmed',
-  Failed = 'failed',
-  Replaced = 'replaced'
-}
+### ConnectionError
+Standardized error types for wallet operations.
 
-enum TransactionType {
-  Request = 'request',
-  Fulfillment = 'fulfillment'
-}
+**Types**:
+- `UserRejectedRequestError` - User rejected the connection
+- `ChainMismatchError` - Connected to wrong network
+- `ConnectorNotFoundError` - Wallet not installed
+- `ResourceUnavailableError` - RPC endpoint unavailable
+- `TimeoutError` - Connection timed out
 
-enum FulfillmentComplexity {
-  Simple = 'simple',
-  Moderate = 'moderate',
-  Complex = 'complex'
-}
-
-enum RiskLevel {
-  Low = 'low',
-  Medium = 'medium',
-  High = 'high'
-}
-```
-
-### Complex Types
-
-```typescript
-interface UserPreferences {
-  defaultGasLimit: number;
-  autoRefresh: boolean;
-  notifications: boolean;
-  theme: 'light' | 'dark' | 'system';
-  currency: 'ETH' | 'USD';
-}
-
-interface PriceEstimate {
-  totalPrice: bigint;
-  effectiveFeePerGas: bigint;
-  baseFee: bigint;
-  priorityFee: bigint;
-  estimatedGas: bigint;
-}
-
-interface NetworkInfo {
-  chainId: number;
-  name: string;
-  rpcUrl: string;
-  blockExplorer: string;
-  contractAddresses: {
-    anyrand: Address;
-    beacon: Address;
-    gasStation: Address;
-  };
-}
-```
-
-## Data Relationships
-
-### Primary Relationships
-- `UserSession` → Many `RandomnessRequest` (one user can have multiple requests)
-- `RandomnessRequest` → One `Transaction` (request transaction)
-- `RandomnessRequest` → Zero or One `Transaction` (fulfillment transaction)
-- `PendingRequest` → One `RandomnessRequest` (represents same entity from different perspective)
-
-### Aggregated Data
-- **User Statistics**: Total requests, success rate, total fees paid
-- **Network Statistics**: Total requests, average fulfillment time, current gas prices
-- **Fulfillment Opportunities**: Available earnings, optimal timing
+**Fields**:
+- `code: number` - Error code
+- `message: string` - Human-readable message
+- `details?: unknown` - Additional error context
 
 ## Data Flow Patterns
 
-### Request Submission Flow
-1. User configures request parameters
-2. System calculates price estimate
-3. User confirms and submits transaction
-4. `RandomnessRequest` created with `Pending` status
-5. Transaction confirmed, request becomes trackable
+### Connection Flow
+1. User clicks connect → `ConnectionState.isOpen = true`
+2. User selects wallet → `ConnectionState.selectedWallet` set
+3. QR code generated → `ConnectionState.qrCodeUri` populated
+4. User approves in wallet → `WalletSession.status = 'connected'`
+5. Session persisted → `SessionStorage` updated
 
-### Fulfillment Monitoring Flow
-1. System monitors drand beacon for round availability
-2. Eligible requests moved to fulfillment pool
-3. Users can browse and select fulfillment opportunities
-4. Fulfillment transaction submitted and tracked
-5. Request status updated to `Fulfilled` or `Failed`
+### Reconnection Flow
+1. App loads → Check `SessionStorage`
+2. If valid session → `WalletSession.status = 'reconnecting'`
+3. Attempt connection → Use stored `connectorId`
+4. Success → `WalletSession.status = 'connected'`
+5. Failure → Clear storage, `status = 'disconnected'`
 
-### Real-time Updates
-- Event listeners update request status in real-time
-- Transaction confirmations trigger state updates
-- Drand round updates refresh fulfillment availability
-- Balance changes trigger price recalculations
+### Network Switch Flow
+1. User changes network in wallet
+2. Event detected → `NetworkInfo.chainId` updated
+3. If unsupported → Show network switch dialog
+4. User switches back → Resume normal operation
 
-## Storage Strategy
+## State Management Strategy
 
-### Local Storage
-- User preferences and session data
-- Recent transaction history (last 50 transactions)
-- Cached price estimates (5-minute TTL)
+### React Query Keys
+```typescript
+// Wallet state queries
+['wallet', 'session'] // Current session
+['wallet', 'balance', address] // Balance for address
+['wallet', 'ens', address] // ENS data for address
 
-### Memory/State Management
-- Active requests and their current status
-- Real-time drand beacon information
-- Network configuration and contract addresses
-- Transaction pending status
+// Network state queries
+['network', 'info', chainId] // Network information
+['network', 'supported'] // List of supported networks
+```
 
-### No Persistent Backend
-- All data derived from blockchain state
-- Event logs provide historical data
-- Real-time queries for current information
-- Local caching for performance optimization
+### Local State (React)
+- Modal open/close state
+- Form inputs (if any)
+- UI-only states (hover, focus)
 
-This data model provides the foundation for a comprehensive frontend application that handles all aspects of the Anyrand randomness system while maintaining real-time accuracy and optimal user experience.
+### Persistent State (Cookies)
+- Session data for SSR
+- User preferences
+- Recently used wallets
+
+## Security Considerations
+
+### Data Validation
+- All addresses validated as checksummed
+- Chain IDs validated against whitelist
+- RPC responses sanitized
+- User inputs escaped
+
+### Session Security
+- No private keys ever stored
+- Session tokens rotated periodically
+- Cookies marked HttpOnly, Secure, SameSite
+- Clear session on security events
+
+## Phase 1 Scope Limitations
+
+This data model covers only wallet authentication for Phase 1. Future phases will add:
+- Randomness request entities
+- Transaction tracking
+- Smart contract interactions
+- Historical data management
+
+The current model provides a solid foundation for wallet connectivity that can be extended in subsequent phases.

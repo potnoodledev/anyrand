@@ -1,223 +1,197 @@
-# Research: Anyrand Frontend Application
+# Research: Anyrand Frontend Application - Phase 1
 
 **Date**: 2025-09-20
-**Research Phase**: Phase 0 - Technology Stack Analysis
+**Phase**: Phase 0 - Research
+**Focus**: Wallet authentication using reference project stack
 
-## Reference Project Architecture Analysis
+## Technology Stack Analysis
 
-### Decision: Next.js 15 + React 19 + TypeScript Stack
-**Rationale**: The lottopgf-v1-frontend reference project demonstrates proven patterns for Web3 applications using the latest stable versions of Next.js and React with excellent TypeScript integration.
+### Decision: Reown AppKit v1.6.2 with Wagmi v2
+**Rationale**: The reference project successfully implements this combination, providing:
+- Production-proven wallet connection patterns
+- Full SSR support for Next.js 15
+- Seamless session persistence via cookies
+- Type-safe integration with TypeScript 5.7
 
-**Key Architectural Patterns Identified**:
-- **App Router Structure**: Next.js 15 App Router with proper SSR support
-- **Component Organization**: Feature-based organization with UI/business logic separation
-- **Container Pattern**: Page-level containers orchestrating multiple components
-- **Suspense Integration**: Modern loading states with React Suspense
+**Alternatives considered**:
+- RainbowKit: More opinionated, less flexible for custom UI
+- ConnectKit: Less mature, smaller ecosystem
+- Custom implementation: Higher maintenance burden, security risks
 
-**Alternatives Considered**: Vite + React, but Next.js provides better SSR support for Web3 applications and built-in optimizations.
+### Decision: Next.js 15 with App Router
+**Rationale**:
+- Latest stable version with improved performance (Turbopack support)
+- Built-in RSC (React Server Components) for optimal loading
+- Reference project demonstrates successful patterns
+- Excellent TypeScript integration
 
-### Decision: Reown AppKit 1.6.2 for Wallet Integration
-**Rationale**: Reference project shows successful implementation with excellent multi-wallet support, reduced bundle size, and enhanced performance in recent versions.
+**Alternatives considered**:
+- Pages Router: Legacy approach, missing modern optimizations
+- Vite + React: Would require custom SSR setup
+- Remix: Different ecosystem, less alignment with reference
 
-**Implementation Pattern**:
+### Decision: React Query v5 for State Management
+**Rationale**:
+- Native integration with Wagmi v2
+- Automatic cache invalidation for blockchain data
+- Optimistic updates for better UX
+- DevTools for debugging
+
+**Alternatives considered**:
+- Zustand: Would require custom blockchain integration
+- Redux Toolkit: Overcomplicated for wallet state
+- Context API alone: Insufficient for complex async state
+
+### Decision: Radix UI + Tailwind CSS
+**Rationale**:
+- Accessibility-first components (WCAG compliant)
+- Headless UI allows custom styling
+- Tailwind provides rapid development
+- Reference project patterns available
+
+**Alternatives considered**:
+- Material UI: Too opinionated for custom design
+- Chakra UI: Larger bundle size
+- Custom components: Time-consuming, accessibility concerns
+
+## Integration Patterns
+
+### Reown AppKit Configuration
+
+**Key findings from reference project**:
+
+1. **SSR-Ready Setup**: Cookie-based storage for session persistence
 ```typescript
-export const wagmiAdapter = new WagmiAdapter({
-  networks: [base, scroll, mainnet],
-  projectId,
-  ssr: true,
-  storage: createStorage({ storage: cookieStorage }),
-});
+storage: createStorage({
+  storage: cookieStorage
+})
 ```
 
-**Alternatives Considered**: Direct WalletConnect v2, but AppKit provides better UX and maintains compatibility.
+2. **Environment Variables**:
+- `NEXT_PUBLIC_WC_PROJECT_ID`: Required WalletConnect project ID
+- `NEXT_PUBLIC_APP_URL`: Application URL for metadata
 
-### Decision: Wagmi 2.14.6 + Viem 2.21.57 for Blockchain Interactions
-**Rationale**: Modern hooks-based approach with excellent TypeScript support, efficient caching, and built-in error handling.
-
-**Key Patterns**:
-- Suspense queries for better loading states
-- Contract simulation before execution
-- Optimized RPC batching with multicall
-- Built-in retry logic and error handling
-
-**Alternatives Considered**: Direct ethers.js integration, but Wagmi provides better React integration and caching.
-
-## Anyrand Smart Contract Integration
-
-### Decision: TypeScript Contract Interfaces with Event Monitoring
-**Rationale**: Analysis shows Anyrand requires complex transaction flows with real-time event monitoring for request tracking and fulfillment.
-
-**Core Integration Patterns**:
-- **Request Flow**: `getRequestPrice()` → `requestRandomness()` → event monitoring
-- **Fulfillment Flow**: Event listening → `fulfillRandomness()` → callback verification
-- **State Management**: Real-time request state tracking with `getRequestState()`
-
-**Key Contract Functions**:
-```typescript
-interface AnyrandIntegration {
-  requestRandomness(deadline: number, callbackGasLimit: number): Promise<RequestResult>;
-  getRequestPrice(callbackGasLimit: number): Promise<PriceInfo>;
-  getRequestState(requestId: bigint): Promise<RequestState>;
-  fulfillRandomness(requestId: bigint, ...params): Promise<FulfillmentResult>;
-}
+3. **Provider Hierarchy**:
+```
+ThemeProvider
+  └── WagmiProvider (with initialState)
+      └── QueryClientProvider
+          └── Application
 ```
 
-**Multi-Network Support**:
-- Scroll (mainnet): 0x7ED45287f817842d72753FE02617629c4c7c2FBE
-- Scroll Sepolia: 0xdFB68D4a5703bC99bEe0A8eb48fA12aBF1280aaC
-- Base: 0xF6baf607AC2971EE6A3C47981E7176134628e36C
+4. **Chain Validation**: Strict validation with user-friendly UI for wrong networks
 
-**Alternatives Considered**: GraphQL subgraph integration, but direct contract interaction provides better real-time updates.
+### Wagmi v2 Integration
 
-## State Management Strategy
+**Configuration patterns**:
+- Single chain setup for simpler UX
+- Cookie storage for cross-session persistence
+- SSR state initialization from headers
+- Type-safe contract interactions with generated ABIs
 
-### Decision: TanStack Query 5.62.10 with Optimized Caching
-**Rationale**: Blockchain data requires sophisticated caching strategies due to network latency and gas costs. React Query provides excellent patterns for this.
+### Component Architecture
 
-**Caching Strategy**:
-```typescript
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000, // 30 seconds for blockchain data
-      gcTime: 5 * 60_000, // 5 minutes garbage collection
-      retry: (failureCount, error) => {
-        if (error.message?.includes('User rejected')) return false;
-        return failureCount < 3;
-      },
-    },
-  },
-});
-```
+**Identified patterns**:
+1. **Wallet Button**: Single component using `useAppKit()` hook
+2. **Chain Check**: Dedicated component for network validation
+3. **Account Display**: Format utilities for addresses and ENS
+4. **Connection State**: Global hooks from wagmi
 
-**Query Patterns**:
-- Suspense hooks for contract reads
-- Dependent queries for complex data fetching
-- Real-time invalidation on transaction confirmation
-- Batched contract calls with multicall
+## Performance Optimizations
 
-**Alternatives Considered**: Zustand + SWR, but React Query provides better blockchain-specific patterns.
+### Bundle Size Management
+- Webpack externals for unnecessary dependencies
+- Dynamic imports for heavy components
+- Tree-shaking with ES modules
 
-## Testing Strategy
-
-### Decision: Vitest + React Testing Library + Playwright
-**Rationale**: Modern testing stack with excellent TypeScript support and blockchain-specific testing capabilities.
-
-**Testing Approach**:
-- **Unit Tests**: Component and hook testing with mocked blockchain interactions
-- **Integration Tests**: User flow testing with simulated wallet connections
-- **E2E Tests**: Full blockchain interactions with local Hardhat network
-- **Performance Tests**: Large data set rendering and memory leak prevention
-
-**Mock Strategy**:
-```typescript
-// Wallet mocking for consistent testing
-export const createMockWallet = () => ({
-  request: vi.fn(),
-  selectedAddress: '0x1234567890123456789012345678901234567890',
-  chainId: '0x1',
-  isMetaMask: true,
-});
-
-// Contract mocking for predictable test results
-export const createMockAnyrandContract = () => ({
-  requestRandomness: vi.fn().mockResolvedValue({ hash: '0xabc123' }),
-  getRequestPrice: vi.fn().mockResolvedValue(['1000000000000000', '20000000000']),
-});
-```
-
-**Alternatives Considered**: Jest, but Vitest provides better ES modules support and faster execution.
-
-## UI Component Strategy
-
-### Decision: Radix UI + Tailwind CSS + shadcn/ui
-**Rationale**: Reference project demonstrates excellent accessibility, consistent theming, and developer experience with this combination.
-
-**Component Patterns**:
-- Variant-based styling with `class-variance-authority`
-- Composition over inheritance with Radix primitives
-- CSS variables for consistent theming
-- Responsive design with Tailwind utilities
-
-**Key Components Needed**:
-- WalletConnect button with status display
-- Transaction forms with validation
-- Real-time status cards with loading states
-- Data tables with sorting and filtering
-- Error boundaries with recovery actions
-
-**Alternatives Considered**: Material-UI, but Radix provides better accessibility and customization.
-
-## Performance Optimization
-
-### Decision: Next.js Built-in Optimizations + Custom Blockchain Patterns
-**Rationale**: Blockchain applications have unique performance challenges requiring specialized optimization strategies.
-
-**Optimization Strategies**:
-- Code splitting by feature/route
-- Image optimization with Next.js Image component
-- Bundle analysis and tree shaking
-- RPC request batching and caching
-- Lazy loading for non-critical components
-- Memory leak prevention for event listeners
-
-**Monitoring Approach**:
-- Bundle size tracking
-- Performance metrics for blockchain operations
-- Memory usage monitoring
-- User interaction analytics
-
-**Alternatives Considered**: Webpack manual configuration, but Next.js provides better defaults.
+### Loading Performance
+- Next.js 15 Turbopack for faster dev builds
+- React 19 automatic batching
+- Suspense boundaries for async components
 
 ## Security Considerations
 
-### Decision: Defense-in-Depth Security Strategy
-**Rationale**: Frontend blockchain applications require multiple layers of security due to financial implications.
+### Wallet Integration Security
+1. **No Private Keys**: Never stored or transmitted
+2. **HTTPS Only**: Enforced in production
+3. **Input Validation**: All user inputs sanitized
+4. **CSP Headers**: Content Security Policy configured
 
-**Security Measures**:
-- Input validation and sanitization
-- Secure wallet connection patterns
-- Environment variable protection
-- XSS prevention with proper escaping
-- HTTPS enforcement for production
-- No private key exposure in client code
-
-**Error Handling**:
-```typescript
-export function extractErrorMessages(error: unknown): BlockchainError {
-  // Comprehensive error classification and user-friendly messaging
-  if (error.message?.includes('User rejected')) {
-    return { type: 'USER_REJECTED', message: 'Transaction was rejected' };
-  }
-  // Additional error types...
-}
-```
-
-**Alternatives Considered**: Basic validation only, but comprehensive security is essential for financial applications.
+### Session Security
+1. **Cookie Flags**: HttpOnly, Secure, SameSite
+2. **CSRF Protection**: Built into Next.js
+3. **XSS Prevention**: React's automatic escaping
 
 ## Development Workflow
 
-### Decision: ESLint + Prettier + TypeScript Strict Mode
-**Rationale**: Ensures code quality and consistency across the team while preventing common blockchain development errors.
+### Testing Strategy
+1. **Unit Tests**: Vitest for components and hooks
+2. **Integration Tests**: Testing Library for user flows
+3. **E2E Tests**: Playwright for complete scenarios
+4. **Contract Mocks**: Mock wallet providers for testing
 
-**Quality Tools**:
-- TypeScript strict configuration with `noUncheckedIndexedAccess`
-- ESLint with React and blockchain-specific rules
-- Prettier with Tailwind plugin for formatting
-- Pre-commit hooks for automated quality checks
+### Code Quality Tools
+- **TypeScript**: Strict mode configuration
+- **ESLint**: Next.js recommended rules
+- **Prettier**: Consistent formatting with Tailwind plugin
+- **Husky**: Pre-commit hooks for quality checks
 
-**Build Process**:
-- Development with Turbopack for faster iteration
-- Production builds with optimization
-- Environment-specific configuration
-- Automated deployment pipeline
+## Implementation Approach
 
-**Alternatives Considered**: Minimal tooling, but comprehensive quality tools prevent expensive mistakes in blockchain development.
+### Phase 1 Priorities
+1. **Core Setup**: Initialize Next.js with TypeScript
+2. **Provider Configuration**: Implement Reown AppKit providers
+3. **Connect Button**: Basic wallet connection UI
+4. **Session Persistence**: Cookie-based state management
+5. **Chain Validation**: Network checking component
+6. **Error Handling**: Comprehensive error boundaries
 
----
+### Known Patterns from Reference
 
-## Summary
+1. **File Structure**:
+```
+src/
+├── app/           # Pages and layouts
+├── components/    # Reusable components
+├── hooks/        # Custom React hooks
+├── lib/          # Configuration and utilities
+└── types/        # TypeScript definitions
+```
 
-All research areas have been analyzed and decisions made. The technology stack provides a solid foundation for building a modern, secure, and performant Web3 frontend application. Key patterns from the reference project have been identified and adapted for Anyrand's specific requirements. The testing strategy ensures reliability, and the security approach addresses the unique challenges of blockchain applications.
+2. **Configuration Files**:
+- `wagmi.ts`: Wagmi adapter setup
+- `providers.tsx`: Provider component tree
+- `constants.ts`: Chain and metadata configuration
 
-**Next Phase**: Proceed to Phase 1 - Design & Contracts with detailed data models and API contracts.
+3. **Component Patterns**:
+- Separation of UI and logic
+- Consistent prop interfaces
+- Error boundary wrapping
+- Loading state handling
+
+## Risks and Mitigations
+
+### Technical Risks
+1. **Wallet Compatibility**: Test with multiple wallet providers
+2. **Network Latency**: Implement proper loading states
+3. **Session Loss**: Graceful reconnection flows
+4. **Version Updates**: Lock dependencies for stability
+
+### User Experience Risks
+1. **Complex Onboarding**: Clear instructions and help text
+2. **Network Switching**: Automated prompts and guidance
+3. **Error Messages**: User-friendly, actionable messages
+4. **Mobile Support**: Responsive design and QR codes
+
+## Conclusion
+
+The research confirms that following the reference project's patterns with Reown AppKit v1.6.2, Wagmi v2, and Next.js 15 provides a solid foundation for Phase 1 wallet authentication. The stack is production-tested, well-documented, and aligns with modern Web3 development practices.
+
+Key success factors:
+- Leverage existing patterns from reference project
+- Focus on core wallet functionality first
+- Implement comprehensive error handling
+- Ensure mobile-first responsive design
+- Follow TDD principles from the start
+
+This research provides clear direction for Phase 1 implementation with minimal technical unknowns.

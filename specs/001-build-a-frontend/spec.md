@@ -1,33 +1,34 @@
-# Feature Specification: Anyrand Frontend Application
+# Feature Specification: Anyrand Frontend Application - Phase 1: Wallet Authentication
 
 **Feature Branch**: `001-build-a-frontend`
 **Created**: 2025-09-20
-**Status**: Draft
+**Status**: Draft - Phase 1 Focus
 **Input**: User description: "build a frontend application for the underlying anyrand contracts. allow the user to login with a wallet and request randomness and fulfill pending requests. also show details about the previously done randomness request transactions and the resulting randomness"
+**Phase 1 Focus**: Implement WalletConnect/Reown authentication only, establishing the foundation for future smart contract interactions
 
 ## Execution Flow (main)
 ```
 1. Parse user description from Input
-   ’ If empty: ERROR "No feature description provided"
+   ï¿½ If empty: ERROR "No feature description provided"
 2. Extract key concepts from description
-   ’ Identify: actors, actions, data, constraints
+   ï¿½ Identify: actors, actions, data, constraints
 3. For each unclear aspect:
-   ’ Mark with [NEEDS CLARIFICATION: specific question]
+   ï¿½ Mark with [NEEDS CLARIFICATION: specific question]
 4. Fill User Scenarios & Testing section
-   ’ If no clear user flow: ERROR "Cannot determine user scenarios"
+   ï¿½ If no clear user flow: ERROR "Cannot determine user scenarios"
 5. Generate Functional Requirements
-   ’ Each requirement must be testable
-   ’ Mark ambiguous requirements
+   ï¿½ Each requirement must be testable
+   ï¿½ Mark ambiguous requirements
 6. Identify Key Entities (if data involved)
 7. Run Review Checklist
-   ’ If any [NEEDS CLARIFICATION]: WARN "Spec has uncertainties"
-   ’ If implementation details found: ERROR "Remove tech details"
+   ï¿½ If any [NEEDS CLARIFICATION]: WARN "Spec has uncertainties"
+   ï¿½ If implementation details found: ERROR "Remove tech details"
 8. Return: SUCCESS (spec ready for planning)
 ```
 
 ---
 
-## ¡ Quick Guidelines
+## ï¿½ Quick Guidelines
 -  Focus on WHAT users need and WHY
 - L Avoid HOW to implement (no tech stack, APIs, code structure)
 - =e Written for business stakeholders, not developers
@@ -55,53 +56,54 @@ When creating this spec from a user prompt:
 ## User Scenarios & Testing *(mandatory)*
 
 ### Primary User Story
-A crypto user visits the Anyrand frontend application to interact with verifiable randomness services. They connect their wallet, view their transaction history, request new randomness for their applications, and optionally fulfill pending randomness requests from other users to earn fees. The interface provides clear visibility into the randomness generation process, transaction status, and historical results.
+A crypto user visits the Anyrand frontend application to establish wallet authentication. They connect their wallet using WalletConnect/Reown protocol to establish a secure session. Once authenticated, the interface displays their connected wallet address and network information, providing the foundation for future smart contract interactions.
 
 ### Acceptance Scenarios
-1. **Given** a user visits the application without a connected wallet, **When** they click "Connect Wallet", **Then** they can successfully authenticate using their preferred wallet and see their account dashboard
-2. **Given** a connected user wants randomness, **When** they configure deadline and gas settings and submit a request, **Then** the system creates a randomness request and shows the pending status with estimated fulfillment time
-3. **Given** a user has submitted a randomness request, **When** the deadline passes and the drand round becomes available, **Then** they can view the fulfillable status and either wait for fulfillment or fulfill it themselves
-4. **Given** a randomness request has been fulfilled, **When** the user views their transaction history, **Then** they can see the original request details, fulfillment transaction, and the resulting random value
-5. **Given** a user wants to earn fees by fulfilling requests, **When** they browse pending requests from other users, **Then** they can select and fulfill requests that have passed their deadline
-6. **Given** a user's transaction is pending, **When** they check the status, **Then** they see real-time updates on transaction confirmation and estimated completion time
+1. **Given** a user visits the application without a connected wallet, **When** they click "Connect Wallet", **Then** they see a WalletConnect/Reown QR code or deep link options for wallet connection
+2. **Given** a user has scanned the QR code or clicked a deep link, **When** they approve the connection in their wallet app, **Then** the application displays their connected wallet address and current network
+3. **Given** a user has an active wallet session, **When** they refresh the page or return later, **Then** the session persists and they remain authenticated
+4. **Given** a connected user, **When** they click "Disconnect Wallet", **Then** the session is terminated and they return to the unauthenticated state
+5. **Given** a user switches networks in their wallet, **When** the network change is detected, **Then** the application updates to show the new network information
+6. **Given** a user switches accounts in their wallet, **When** the account change is detected, **Then** the application updates to show the new account address
 
 ### Edge Cases
-- What happens when a wallet connection is lost during transaction submission?
-- How does the system handle failed randomness requests or callback failures?
-- What occurs when a user tries to fulfill a request that has already been fulfilled by someone else?
-- How are network congestion delays and high gas prices communicated to users?
-- What happens when a user's wallet doesn't have sufficient funds for gas fees?
+- What happens when the WalletConnect/Reown connection times out during pairing?
+- How does the system handle when a user rejects the connection request in their wallet?
+- What occurs when the wallet app is closed or unavailable during an active session?
+- How are connection errors and network issues communicated to users?
+- What happens when a user tries to connect with an unsupported wallet?
+- How does the system handle session expiration and reconnection?
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
-- **FR-001**: System MUST allow users to connect their cryptocurrency wallet using standard wallet connection protocols
-- **FR-002**: System MUST display the user's connected wallet address and current network
-- **FR-003**: Users MUST be able to configure randomness request parameters including deadline and callback gas limit
-- **FR-004**: System MUST calculate and display the total cost for randomness requests before submission
-- **FR-005**: Users MUST be able to submit randomness requests to the Anyrand smart contract
-- **FR-006**: System MUST display real-time status updates for submitted randomness requests (pending, fulfillable, fulfilled, failed)
-- **FR-007**: Users MUST be able to view a complete history of their randomness request transactions
-- **FR-008**: System MUST display detailed information for each randomness request including request ID, deadline, gas settings, fees paid, and resulting random value
-- **FR-009**: Users MUST be able to browse pending randomness requests from other users that are eligible for fulfillment
-- **FR-010**: System MUST allow users to fulfill pending randomness requests to earn fulfillment fees
-- **FR-011**: System MUST show estimated earnings for fulfilling each pending request
-- **FR-012**: Users MUST be able to view transaction confirmations and blockchain explorer links
-- **FR-013**: System MUST provide clear error messages and suggested actions when transactions fail
-- **FR-014**: System MUST display current network gas prices and estimated transaction times
-- **FR-015**: System MUST show the user's transaction history with filtering and sorting capabilities
-- **FR-016**: System MUST display the current drand beacon round and timing information
-- **FR-017**: Users MUST be able to disconnect their wallet and switch to different wallets
-- **FR-018**: System MUST provide responsive design that works on desktop and mobile devices
-- **FR-019**: System MUST display loading states and progress indicators for all blockchain interactions
-- **FR-020**: System MUST show the verification status and randomness derivation for fulfilled requests
+- **FR-001**: System MUST implement WalletConnect/Reown protocol for wallet authentication
+- **FR-002**: System MUST display a QR code for mobile wallet connections
+- **FR-003**: System MUST provide deep link options for desktop wallet connections
+- **FR-004**: System MUST display the user's connected wallet address prominently
+- **FR-005**: System MUST show the current blockchain network (mainnet, testnet, etc.)
+- **FR-006**: System MUST persist wallet sessions across page refreshes and browser sessions
+- **FR-007**: Users MUST be able to disconnect their wallet with a single action
+- **FR-008**: System MUST detect and respond to wallet account changes in real-time
+- **FR-009**: System MUST detect and respond to network changes in real-time
+- **FR-010**: System MUST display clear connection status indicators (connecting, connected, disconnected)
+- **FR-011**: System MUST show loading states during wallet connection attempts
+- **FR-012**: System MUST provide clear error messages when connection fails
+- **FR-013**: System MUST handle session expiration gracefully with reconnection prompts
+- **FR-014**: System MUST support major wallet providers compatible with WalletConnect/Reown
+- **FR-015**: System MUST provide responsive design that works on desktop and mobile devices
+- **FR-016**: System MUST secure all wallet communication through encrypted channels
+- **FR-017**: System MUST display wallet connection instructions for first-time users
+- **FR-018**: System MUST show a wallet selection modal with supported wallet options
+- **FR-019**: System MUST validate network compatibility before allowing interactions
+- **FR-020**: System MUST provide visual feedback for all wallet-related actions
 
 ### Key Entities *(include if feature involves data)*
-- **Randomness Request**: Represents a user's request for verifiable randomness, including request ID, requester address, deadline, callback gas limit, fees paid, current status, and resulting random value
-- **Transaction**: Represents blockchain transactions related to randomness requests and fulfillments, including transaction hash, block number, gas used, and confirmation status
-- **User Session**: Represents a connected wallet session, including wallet address, network information, and connection status
-- **Pending Request**: Represents randomness requests from other users that are available for fulfillment, including potential earnings and fulfillment requirements
-- **Drand Round**: Represents the current state of the drand beacon, including round number, timestamp, and availability status
+- **Wallet Session**: Represents an authenticated wallet connection, including wallet address, provider name, connection status, and session expiration
+- **Network Information**: Represents the current blockchain network, including chain ID, network name, and RPC endpoints
+- **Connection State**: Represents the current state of the WalletConnect/Reown connection, including pairing status, QR code data, and deep link URIs
+- **User Account**: Represents the connected wallet account, including address, balance (optional), and ENS name (if available)
+- **Session Storage**: Represents persistent session data for maintaining authentication across page refreshes
 
 ---
 

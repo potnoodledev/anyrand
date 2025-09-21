@@ -1,4 +1,4 @@
-# Implementation Plan: Anyrand Frontend Application
+# Implementation Plan: Anyrand Frontend Application - Phase 1: Wallet Authentication
 
 **Branch**: `001-build-a-frontend` | **Date**: 2025-09-20 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/001-build-a-frontend/spec.md`
@@ -30,27 +30,27 @@
 - Phase 3-4: Implementation execution (manual or via tools)
 
 ## Summary
-Build a comprehensive frontend application for Anyrand's verifiable randomness service using Next.js 15, React 19, TypeScript, and Wagmi v2 for wallet connectivity. The application will enable users to connect wallets, request randomness, fulfill pending requests, and view transaction history with real-time status updates and blockchain integration.
+Build a comprehensive frontend application for Anyrand's verifiable randomness service. Phase 1 focuses on implementing wallet authentication using Reown AppKit (formerly WalletConnect) with the exact same tech stack as the reference project (lottopgf-v1-frontend). This establishes the foundation for future smart contract interactions using Next.js 15, React 19, TypeScript 5.7, and Wagmi v2.
 
 ## Technical Context
-**Language/Version**: TypeScript 5.7.2, Node.js 18+
-**Primary Dependencies**: Next.js 15.1.2, React 19.0.0, Wagmi 2.14.6, Viem 2.21.57, TanStack Query 5.62.10, Radix UI, Tailwind CSS 3.4.17
-**Storage**: Local state management with React Query for caching, localStorage for user preferences
+**Language/Version**: TypeScript 5.7.2, Node.js 18+, pnpm 9.15.1
+**Primary Dependencies**: Next.js 15.1.2, React 19.0.0, Wagmi 2.14.6, Viem 2.21.57, @reown/appkit 1.6.2, @tanstack/react-query 5.62.10
+**Storage**: React Query for caching, localStorage for user preferences
 **Testing**: Vitest for unit testing, Playwright for E2E testing, React Testing Library for component testing
 **Target Platform**: Web application (responsive design for desktop and mobile browsers)
 **Project Type**: Web application (frontend only, connects to existing smart contracts)
 **Performance Goals**: <3s initial load time, <200ms interaction response, optimized for mobile networks
 **Constraints**: Must work with existing Anyrand smart contracts, responsive design required, secure wallet integration mandatory
-**Scale/Scope**: Single-page application with ~5-8 main views, targeting crypto users and developers
+**Scale/Scope**: Single-page application focusing on wallet authentication in Phase 1
 
 ## Constitution Check
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-**Test-First Development**: ✅ PASS - Will implement comprehensive testing strategy with unit, integration, and E2E tests
-**Code Quality Standards**: ✅ PASS - Using TypeScript strict mode, ESLint, Prettier, and established React patterns
-**Security-First Architecture**: ✅ PASS - Secure wallet integration, input validation, no private key exposure, HTTPS enforcement
-**Performance Optimization**: ✅ PASS - Next.js optimization features, code splitting, lazy loading, React optimization patterns
-**User Experience Consistency**: ✅ PASS - Responsive design, consistent error handling, loading states, clear transaction flows
+**Test-First Development**: ✅ PASS - Will implement comprehensive testing with Vitest and Playwright following TDD principles
+**Code Quality Standards**: ✅ PASS - Using TypeScript strict mode, ESLint, Prettier (matching reference project configuration)
+**Security-First Architecture**: ✅ PASS - Secure wallet integration via Reown AppKit, input validation, no private key exposure
+**Performance Optimization**: ✅ PASS - Next.js 15 with Turbopack, code splitting, React Query for efficient data management
+**User Experience Consistency**: ✅ PASS - Using Radix UI components and Tailwind CSS for consistent design patterns
 
 ## Project Structure
 
@@ -67,39 +67,43 @@ specs/001-build-a-frontend/
 
 ### Source Code (repository root)
 ```
-# Option 2: Web application (frontend detected)
+# Option 2: Web application (frontend detected) - matching reference project structure
 frontend/
 ├── src/
-│   ├── app/            # Next.js 15 App Router
-│   ├── components/     # React components (UI + feature)
+│   ├── app/             # Next.js 15 App Router pages
+│   ├── components/      # React components (UI + feature components)
+│   │   ├── ui/         # Radix UI based components
+│   │   └── wallet/     # Wallet connection components
 │   ├── hooks/          # Custom React hooks
 │   ├── lib/            # Utilities and configuration
-│   ├── abi/            # Smart contract ABIs
-│   └── types/          # TypeScript type definitions
+│   │   ├── wagmi/      # Wagmi configuration
+│   │   └── utils/      # Helper functions
+│   ├── types/          # TypeScript type definitions
+│   └── styles/         # Global styles and Tailwind config
 ├── public/             # Static assets
 ├── tests/              # Test files (unit, integration, E2E)
-└── package.json        # Dependencies and scripts
+└── package.json        # Dependencies matching reference project
 ```
 
-**Structure Decision**: Option 2 - Web application structure with dedicated frontend/ directory
+**Structure Decision**: Option 2 - Web application structure with dedicated frontend/ directory matching reference project
 
 ## Phase 0: Outline & Research
 1. **Extract unknowns from Technical Context** above:
-   - Reference project analysis → best practices extraction
-   - Anyrand contract integration patterns → ABI and interaction methods
-   - Wallet connection patterns → Reown AppKit vs WalletConnect comparison
-   - State management approach → React Query + Zustand evaluation
+   - Reown AppKit integration patterns → Best practices for v1.6.2
+   - Wagmi v2 configuration → Setup with Reown adapter
+   - React Query v5 patterns → Integration with wallet state
+   - Next.js 15 App Router → Structure and patterns from reference
 
 2. **Generate and dispatch research agents**:
    ```
-   For reference project stack analysis:
-     Task: "Analyze lottopgf-v1-frontend architecture and extract reusable patterns"
-   For wallet integration:
-     Task: "Research best practices for Reown AppKit and Wagmi integration"
-   For blockchain interaction:
-     Task: "Document Anyrand smart contract integration patterns"
-   For testing strategy:
-     Task: "Define testing approach for React + blockchain applications"
+   For Reown AppKit setup:
+     Task: "Research Reown AppKit v1.6.2 integration with Next.js 15 and document setup patterns"
+   For Wagmi configuration:
+     Task: "Analyze wagmi v2.14.6 setup with @reown/appkit-adapter-wagmi"
+   For component patterns:
+     Task: "Extract Radix UI component patterns from reference project"
+   For state management:
+     Task: "Document React Query v5 patterns for wallet state management"
    ```
 
 3. **Consolidate findings** in `research.md` using format:
@@ -113,37 +117,40 @@ frontend/
 *Prerequisites: research.md complete*
 
 1. **Extract entities from feature spec** → `data-model.md`:
-   - RandomnessRequest: request ID, requester, deadline, gas limit, status, random value
-   - Transaction: hash, block number, gas used, confirmation status
-   - UserSession: wallet address, network, connection status
-   - PendingRequest: request details + fulfillment earnings
-   - DrandRound: round number, timestamp, availability
+   - WalletSession: address, provider, connection status, session expiration
+   - NetworkInfo: chain ID, network name, RPC endpoints
+   - ConnectionState: pairing status, QR code data, deep links
+   - UserAccount: address, balance (optional), ENS name
+   - SessionStorage: persistent session data
 
 2. **Generate API contracts** from functional requirements:
-   - Frontend-to-Contract interfaces (smart contract calls)
-   - Component prop interfaces and state management contracts
-   - Hook return value contracts for consistent data flow
+   - Wallet connection interfaces (connect, disconnect, switch)
+   - Session management contracts (persist, restore, expire)
+   - Network switching interfaces
+   - Component prop interfaces for wallet UI
+   - Hook return value contracts
    - Output TypeScript interfaces to `/contracts/`
 
 3. **Generate contract tests** from contracts:
-   - Component unit tests for UI interactions
-   - Hook tests for blockchain state management
-   - Integration tests for wallet connection flows
-   - E2E tests for complete user journeys
+   - Wallet connection flow tests
+   - Session persistence tests
+   - Network switching tests
+   - Account switching tests
+   - Error handling tests
    - Tests must fail (no implementation yet)
 
 4. **Extract test scenarios** from user stories:
-   - Wallet connection and disconnection flows
-   - Randomness request submission and monitoring
-   - Request fulfillment and fee earning scenarios
-   - Transaction history viewing and filtering
-   - Error handling and edge case coverage
+   - First-time wallet connection flow
+   - Returning user with persisted session
+   - Network and account switching
+   - Disconnection and reconnection
+   - Error recovery scenarios
 
 5. **Update agent file incrementally** (O(1) operation):
    - Run `.specify/scripts/bash/update-agent-context.sh claude`
-   - Add Next.js 15, React 19, Wagmi v2 stack information
-   - Include Anyrand smart contract integration context
-   - Update with frontend-specific patterns and conventions
+   - Add Reown AppKit, Wagmi v2, React Query v5 context
+   - Include Next.js 15 App Router patterns
+   - Update with Radix UI component patterns
 
 **Output**: data-model.md, /contracts/*, failing tests, quickstart.md, CLAUDE.md
 
@@ -153,17 +160,17 @@ frontend/
 **Task Generation Strategy**:
 - Load `.specify/templates/tasks-template.md` as base
 - Generate tasks from Phase 1 design docs (contracts, data model, quickstart)
-- Each component interface → component test task [P]
-- Each hook interface → hook test task [P]
-- Each user story → E2E test task
+- Each wallet interface → connection test task [P]
+- Each UI component → component test task [P]
+- Each hook → hook test task [P]
 - Implementation tasks to make tests pass
 
 **Ordering Strategy**:
 - TDD order: Tests before implementation
-- Dependency order: Core utilities → Hooks → Components → Pages
+- Dependency order: Config → Hooks → Components → Pages
 - Mark [P] for parallel execution (independent files)
 
-**Estimated Output**: 25-30 numbered, ordered tasks in tasks.md
+**Estimated Output**: 15-20 numbered, ordered tasks for Phase 1 wallet authentication
 
 **IMPORTANT**: This phase is executed by the /tasks command, NOT by /plan
 
@@ -177,7 +184,7 @@ frontend/
 ## Complexity Tracking
 *Fill ONLY if Constitution Check has violations that must be justified*
 
-No constitutional violations identified. All requirements align with established principles.
+No constitutional violations identified. All requirements align with established principles. Using proven patterns from reference project.
 
 ## Progress Tracking
 *This checklist is updated during execution flow*

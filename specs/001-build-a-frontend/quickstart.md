@@ -1,326 +1,296 @@
-# Quickstart Guide: Anyrand Frontend Application
+# Quickstart: Anyrand Frontend - Phase 1 Wallet Authentication
 
 **Date**: 2025-09-20
-**Phase**: Phase 1 - Design & Contracts
-
-This guide provides step-by-step instructions for testing the complete Anyrand frontend application user flows.
+**Phase**: Phase 1 Testing
+**Focus**: Wallet connection and session management testing
 
 ## Prerequisites
 
-### Required Setup
-- Node.js 18+ installed
-- Modern web browser (Chrome, Firefox, Safari, Edge)
-- MetaMask or compatible Web3 wallet extension
-- Test ETH on supported networks (Scroll Sepolia for testing)
-
-### Test Environment Configuration
+### Environment Setup
 ```bash
-# Environment variables for testing
-NEXT_PUBLIC_WC_PROJECT_ID=your_walletconnect_project_id
-NEXT_PUBLIC_CHAIN_ID=534351
-NEXT_PUBLIC_ANYRAND_CONTRACT=0xdFB68D4a5703bC99bEe0A8eb48fA12aBF1280aaC
-NEXT_PUBLIC_ENVIRONMENT=development
-```
+# Clone repository and checkout branch
+git checkout 001-build-a-frontend
 
-## Quick Start Steps
-
-### 1. Application Setup (2 minutes)
-
-```bash
-# Clone and setup
+# Navigate to frontend directory
 cd frontend
-npm install
 
-# Start development server
-npm run dev
+# Install dependencies
+pnpm install
 
-# Open browser
-open http://localhost:3000
+# Copy environment variables
+cp .env.example .env.local
+
+# Add WalletConnect Project ID
+echo "NEXT_PUBLIC_WC_PROJECT_ID=your_project_id_here" >> .env.local
 ```
 
-**Expected Result**: Application loads with wallet connection prompt
+### Required Tools
+- Node.js 18+ installed
+- pnpm 9.15.1 installed
+- A Web3 wallet (MetaMask, Rainbow, Coinbase Wallet, etc.)
+- WalletConnect Project ID from https://cloud.walletconnect.com
 
-### 2. Wallet Connection (1 minute)
+## Quick Test Scenarios
 
-**User Actions**:
+### Scenario 1: First-Time Connection
+```bash
+# Start development server
+pnpm dev
+
+# Open browser to http://localhost:3000
+```
+
+**Test Steps**:
 1. Click "Connect Wallet" button
-2. Select wallet provider (MetaMask recommended)
-3. Approve connection in wallet popup
-4. Confirm network switch to Scroll Sepolia if prompted
+2. Select your wallet from the modal
+3. Scan QR code (mobile) or click connect (browser extension)
+4. Approve connection in wallet
+5. ✅ Verify: Wallet address displayed in header
+6. ✅ Verify: Network name shown correctly
+7. ✅ Verify: Session persists on page refresh
 
-**Expected Results**:
-- Wallet address displayed in header (0x1234...5678 format)
-- Network indicator shows "Scroll Sepolia"
-- Balance displayed in ETH
-- Navigation tabs become accessible
+### Scenario 2: Session Persistence
+```bash
+# With wallet connected from Scenario 1
+```
 
-**Validation Checklist**:
-- [ ] Wallet connection status indicator shows "Connected"
-- [ ] User address visible and correctly formatted
-- [ ] Network matches configuration (Scroll Sepolia)
-- [ ] ETH balance is accurate and properly formatted
+**Test Steps**:
+1. Refresh the page (F5)
+2. ✅ Verify: Still connected without re-authentication
+3. Close browser completely
+4. Reopen browser and navigate to app
+5. ✅ Verify: Wallet remains connected
+6. Check developer tools > Application > Cookies
+7. ✅ Verify: Session cookie exists with correct domain
 
-### 3. Request Randomness Flow (3 minutes)
+### Scenario 3: Wallet Disconnection
+```bash
+# With wallet connected
+```
 
-**Step 3.1: Configure Request**
-1. Navigate to "Request Randomness" tab
-2. Set deadline: Select "1 hour from now" option
-3. Set callback gas limit: Enter "100000"
-4. Review price estimate (should show ~0.001 ETH)
+**Test Steps**:
+1. Click on wallet address button
+2. Select "Disconnect" from dropdown
+3. ✅ Verify: Returns to "Connect Wallet" state
+4. ✅ Verify: Session cookie cleared
+5. Refresh page
+6. ✅ Verify: Still disconnected (no auto-reconnect)
 
-**Step 3.2: Submit Request**
-1. Click "Calculate Price" to get latest estimate
-2. Verify total cost is reasonable
-3. Click "Request Randomness" button
-4. Confirm transaction in wallet popup
+### Scenario 4: Network Switching
+```bash
+# Connect wallet on supported network
+```
 
-**Step 3.3: Monitor Request**
-1. Wait for transaction confirmation (30-60 seconds)
-2. Navigate to "My Requests" tab
-3. Verify new request appears with "Pending" status
-4. Note request ID and estimated fulfillment time
+**Test Steps**:
+1. Connect wallet to supported network
+2. In wallet, switch to unsupported network
+3. ✅ Verify: Alert dialog appears
+4. ✅ Verify: Shows current and required network
+5. Click "Switch Network" in dialog
+6. Approve network switch in wallet
+7. ✅ Verify: App updates to show new network
+8. ✅ Verify: No errors or disconnection
 
-**Expected Results**:
-- Transaction submitted successfully
-- Request appears in history with correct details
-- Status shows "Pending"
-- Countdown timer shows time until fulfillable
+### Scenario 5: Account Switching
+```bash
+# With wallet connected
+```
 
-**Validation Checklist**:
-- [ ] Price calculation works correctly
-- [ ] Transaction submits without errors
-- [ ] Request appears in history immediately
-- [ ] All request details are accurate
-- [ ] Estimated fulfillment time is reasonable (1 hour)
+**Test Steps**:
+1. Note current wallet address
+2. In wallet, switch to different account
+3. ✅ Verify: App detects account change
+4. ✅ Verify: New address displayed
+5. ✅ Verify: No modal or re-authentication needed
+6. ✅ Verify: Previous session cleared
 
-### 4. Monitor Request Status (5 minutes)
+### Scenario 6: Mobile Wallet Connection
+```bash
+# On mobile device with wallet app installed
+```
 
-**User Actions**:
-1. Keep "My Requests" tab open
-2. Watch status updates in real-time
-3. Use refresh button to manually update
-4. Click request card to view detailed information
+**Test Steps**:
+1. Open app in mobile browser
+2. Tap "Connect Wallet"
+3. Select wallet app from list
+4. ✅ Verify: Deep link opens wallet app
+5. Approve connection in wallet
+6. ✅ Verify: Returns to browser, shows connected
+7. ✅ Verify: Address displayed correctly
 
-**Expected Behavior**:
-- Real-time status updates (polling every 30 seconds)
-- Countdown timer updates automatically
-- Status transitions: Pending → Fulfillable → Fulfilled
-- Transaction hash links to block explorer
+### Scenario 7: QR Code Connection
+```bash
+# Desktop browser + mobile wallet
+```
 
-**Validation Checklist**:
-- [ ] Real-time updates work correctly
-- [ ] Countdown timer decrements properly
-- [ ] Status changes are reflected immediately
-- [ ] Block explorer links function correctly
+**Test Steps**:
+1. Click "Connect Wallet" on desktop
+2. Select "WalletConnect" option
+3. ✅ Verify: QR code displayed
+4. Open wallet app on mobile
+5. Scan QR code with wallet
+6. Approve connection on mobile
+7. ✅ Verify: Desktop shows connected state
+8. ✅ Verify: Can interact from desktop
 
-### 5. Fulfill Pending Requests (2 minutes)
+### Scenario 8: Error Handling
+```bash
+# Various error conditions
+```
 
-**Step 5.1: Browse Available Requests**
-1. Navigate to "Fulfill Requests" tab
-2. Review available requests from other users
-3. Check estimated earnings for each request
-4. Sort by profitability or deadline
+**Test Connection Rejection**:
+1. Click "Connect Wallet"
+2. Reject connection in wallet
+3. ✅ Verify: Error message displayed
+4. ✅ Verify: Can retry connection
 
-**Step 5.2: Fulfill a Request**
-1. Select a fulfillable request (deadline passed)
-2. Review gas costs and potential earnings
-3. Click "Fulfill Request" button
-4. Confirm transaction in wallet
+**Test Timeout**:
+1. Click "Connect Wallet"
+2. Wait without approving (2+ minutes)
+3. ✅ Verify: Timeout message appears
+4. ✅ Verify: Modal can be closed and reopened
 
-**Expected Results**:
-- List of fulfillable requests displayed
-- Earnings calculations are accurate
-- Fulfillment transaction succeeds
-- Request status updates to "Fulfilled"
+**Test Network Unavailable**:
+1. Disconnect internet
+2. Try to connect wallet
+3. ✅ Verify: Network error message
+4. ✅ Verify: Graceful error handling
 
-**Validation Checklist**:
-- [ ] Available requests load correctly
-- [ ] Earnings calculations are reasonable
-- [ ] Fulfillment transaction processes successfully
-- [ ] Request status updates across all views
+## Automated Test Commands
 
-### 6. View Transaction History (1 minute)
+### Unit Tests
+```bash
+# Run component tests
+pnpm test:unit
 
-**User Actions**:
-1. Navigate to "History" tab
-2. Review all past transactions
-3. Use filter options (status, date range, type)
-4. Click on transactions for detailed view
+# Run with coverage
+pnpm test:unit --coverage
 
-**Expected Results**:
-- Complete transaction history displayed
-- Filtering works correctly
-- Transaction details are comprehensive
-- Links to block explorer function properly
+# Watch mode for development
+pnpm test:unit --watch
+```
 
-**Validation Checklist**:
-- [ ] All transactions appear in history
-- [ ] Filtering reduces results appropriately
-- [ ] Transaction details are complete and accurate
-- [ ] Timestamps and amounts are correct
+### Integration Tests
+```bash
+# Run integration tests
+pnpm test:integration
 
-## User Journey Testing Scenarios
+# Test specific flow
+pnpm test:integration --grep "wallet connection"
+```
 
-### Scenario A: New User First Request
-**Duration**: 5 minutes
-**Objective**: Complete first randomness request as new user
+### E2E Tests
+```bash
+# Install Playwright browsers (first time only)
+pnpm exec playwright install
 
-**Steps**:
-1. Connect wallet (first time)
-2. Understand interface and options
-3. Submit first randomness request
-4. Monitor request until fulfillment
+# Run all E2E tests
+pnpm test:e2e
 
-**Success Criteria**:
-- Wallet connects without issues
-- Interface is intuitive for first-time users
-- Request process is clear and successful
-- User understands next steps
+# Run in headed mode (see browser)
+pnpm test:e2e --headed
 
-### Scenario B: Power User Workflow
-**Duration**: 10 minutes
-**Objective**: Demonstrate advanced features and bulk operations
+# Run specific test file
+pnpm test:e2e tests/wallet-connection.spec.ts
+```
 
-**Steps**:
-1. Submit multiple randomness requests
-2. Fulfill requests from other users
-3. Analyze transaction history and earnings
-4. Optimize gas settings for efficiency
+## Performance Benchmarks
 
-**Success Criteria**:
-- Multiple operations work smoothly
-- No performance degradation with multiple requests
-- Advanced features function correctly
-- Transaction batching works efficiently
+### Expected Metrics
+- **Initial Load**: < 3 seconds
+- **Connect Modal Open**: < 200ms
+- **Wallet Connection**: < 5 seconds (depends on wallet)
+- **Session Restore**: < 500ms
+- **Network Switch**: < 2 seconds
 
-### Scenario C: Error Recovery Testing
-**Duration**: 5 minutes
-**Objective**: Test error handling and recovery mechanisms
+### Testing Performance
+```bash
+# Run performance tests
+pnpm test:performance
 
-**Steps**:
-1. Attempt transaction with insufficient funds
-2. Cancel transaction during submission
-3. Try to use unsupported network
-4. Handle wallet disconnection during operation
+# Generate lighthouse report
+pnpm lighthouse
+```
 
-**Success Criteria**:
-- Error messages are clear and helpful
-- Recovery actions work properly
-- No application crashes or data loss
-- User can resume normal operation
+## Debugging Common Issues
 
-## Mobile Testing Checklist
+### Issue: "Project ID not set"
+```bash
+# Check environment variable
+echo $NEXT_PUBLIC_WC_PROJECT_ID
 
-### Responsive Design (2 minutes)
-**Test on mobile device or browser dev tools**:
-- [ ] Layout adapts to mobile screen sizes
-- [ ] Touch interactions work properly
-- [ ] Text remains readable at all sizes
-- [ ] Navigation is thumb-friendly
+# Ensure .env.local exists and is loaded
+cat .env.local
+```
 
-### Mobile Wallet Integration (3 minutes)
-**Test with mobile wallet apps**:
-- [ ] WalletConnect QR code scanning works
-- [ ] Mobile wallet app launches correctly
-- [ ] Transaction approval flow is smooth
-- [ ] Deep linking back to browser works
+### Issue: "Cannot connect wallet"
+```bash
+# Check browser console for errors
+# Enable debug mode
+localStorage.setItem('DEBUG', 'wagmi:*,appkit:*')
 
-## Performance Testing
+# Restart dev server
+pnpm dev
+```
 
-### Load Testing (3 minutes)
-**Test with large datasets**:
-- [ ] Display 100+ requests in history
-- [ ] Handle multiple pending transactions
-- [ ] Rapid navigation between tabs
-- [ ] Real-time updates with many items
+### Issue: "Session not persisting"
+```bash
+# Check cookie settings
+# In browser DevTools > Application > Cookies
+# Verify cookie name: "wagmi.store"
+# Check SameSite and Secure flags
+```
 
-**Performance Benchmarks**:
-- Initial page load: < 3 seconds
-- Tab switching: < 200ms
-- Real-time updates: < 500ms
-- Large list rendering: < 1 second
+### Issue: "Wrong network"
+```bash
+# Check supported chains in config
+cat src/lib/constants.ts
 
-### Memory Testing (ongoing)
-**Monitor during extended use**:
-- [ ] No memory leaks during long sessions
-- [ ] Event listeners properly cleaned up
-- [ ] Image and component optimization working
+# Verify RPC endpoints
+cat .env.local | grep RPC
+```
 
-## Security Testing
+## Success Criteria
 
-### Input Validation (2 minutes)
-**Test edge cases**:
-- [ ] Invalid addresses rejected
-- [ ] Negative amounts prevented
-- [ ] XSS attempts blocked
-- [ ] Network switching validation
+### Phase 1 Completion Checklist
+- [ ] Wallet connection works with 3+ wallet types
+- [ ] Session persists across refreshes
+- [ ] Network switching handled gracefully
+- [ ] Account switching detected properly
+- [ ] Mobile wallet connection functional
+- [ ] QR code scanning operational
+- [ ] Error states handled appropriately
+- [ ] All unit tests passing
+- [ ] All integration tests passing
+- [ ] All E2E tests passing
+- [ ] Performance benchmarks met
+- [ ] No console errors in production build
 
-### Wallet Security (1 minute)
-**Verify security measures**:
-- [ ] Private keys never exposed
-- [ ] Secure communication with wallet
-- [ ] Transaction data verification
-- [ ] Network validation
+### Test Coverage Requirements
+- Unit tests: > 80% coverage
+- Integration tests: All critical paths
+- E2E tests: All user scenarios
+- Performance: All metrics within targets
 
-## Integration Testing
+## Next Steps
 
-### Smart Contract Integration (5 minutes)
-**Verify contract interactions**:
-- [ ] All contract methods work correctly
-- [ ] Event listening functions properly
-- [ ] Gas estimation is accurate
-- [ ] Error handling for contract failures
+After Phase 1 validation:
+1. Deploy to staging environment
+2. Conduct user acceptance testing
+3. Fix any identified issues
+4. Document any new patterns discovered
+5. Proceed to Phase 2 (smart contract integration)
 
-### External Services (2 minutes)
-**Test third-party integrations**:
-- [ ] Block explorer links work
-- [ ] ENS name resolution
-- [ ] Price feed accuracy
-- [ ] Network status updates
+## Support
 
-## Troubleshooting Guide
+### Troubleshooting Resources
+- Check `docs/TROUBLESHOOTING.md` for common issues
+- Review test outputs in `test-results/` directory
+- Enable debug logging with `DEBUG=*` environment variable
+- Check browser console for detailed error messages
 
-### Common Issues
-
-**Wallet Connection Fails**:
-- Check browser extension is installed and unlocked
-- Verify network configuration
-- Clear browser cache and retry
-
-**Transaction Fails**:
-- Ensure sufficient ETH balance
-- Check gas price settings
-- Verify network connectivity
-
-**Real-time Updates Stop**:
-- Check network connection
-- Refresh page to restart polling
-- Verify WebSocket connection (if used)
-
-**Price Estimates Incorrect**:
-- Refresh page to get latest gas prices
-- Check network congestion
-- Verify contract configuration
-
-### Support Information
-- **Documentation**: `/docs` directory
-- **Issue Reporting**: GitHub Issues
-- **Community**: Discord/Telegram channels
-- **Developer Tools**: Browser console for debugging
-
-## Success Metrics
-
-### Completion Criteria
-- [ ] All user flows complete successfully
-- [ ] No critical errors or crashes
-- [ ] Performance meets benchmarks
-- [ ] Security validations pass
-- [ ] Mobile experience is satisfactory
-
-### Quality Indicators
-- Transaction success rate: > 95%
-- Page load time: < 3 seconds
-- User error rate: < 5%
-- Mobile usability score: > 80%
-
-This quickstart guide ensures comprehensive testing of the Anyrand frontend application across all user scenarios, device types, and potential edge cases.
+### Getting Help
+- Review existing tests in `tests/` directory
+- Check reference implementation in `reference-projects/`
+- Consult team documentation in `docs/`
+- Review constitution principles in `.specify/memory/constitution.md`
