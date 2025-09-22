@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useSubmitRequest } from '../../hooks/anyrand/use-submit-request'
 import { useContractConstraints } from '../../hooks/anyrand/use-contract-constraints'
-import { isValidDeadline, isValidCallbackGasLimit } from '../../types/anyrand/randomness-request'
+// import { isValidDeadline, isValidCallbackGasLimit } from '../../types/anyrand/randomness-request'
 import { SubmitRequestResult, ContractError } from '../../types/anyrand/frontend-api'
 
 interface RequestSubmissionFormProps {
@@ -31,12 +31,12 @@ interface FormErrors {
 export function RequestSubmissionForm({
   onSubmitSuccess,
   onSubmitError,
-  defaultValues,
+  defaultValues: _defaultValues,
   disabled = false,
   className = ''
 }: RequestSubmissionFormProps) {
-  const { submit, simulate, isLoading, error, estimatedFee } = useSubmitRequest()
-  const { maxCallbackGasLimit, maxDeadlineDelta } = useContractConstraints()
+  const { submit, simulate, isLoading, error: _error, estimatedFee } = useSubmitRequest()
+  const { maxCallbackGasLimit: _maxCallbackGasLimit, maxDeadlineDelta: _maxDeadlineDelta } = useContractConstraints()
 
   // Form state - using fixed values from quickstart script
   const [formData, setFormData] = useState<FormData>(() => {
@@ -52,7 +52,7 @@ export function RequestSubmissionForm({
 
   const [errors, setErrors] = useState<FormErrors>({})
   const [isSimulating, setIsSimulating] = useState(false)
-  const [lastSimulation, setLastSimulation] = useState<any>(null)
+  const [lastSimulation, setLastSimulation] = useState<unknown>(null)
 
   // Validate form - simplified, removed problematic validation
   const validateForm = useCallback((): boolean => {
@@ -131,7 +131,7 @@ export function RequestSubmissionForm({
       setErrors({ general: contractError.userMessage })
       onSubmitError?.(contractError)
     }
-  }, [formData, validateForm, disabled, isLoading, submit, onSubmitSuccess, onSubmitError])
+  }, [disabled, isLoading, submit, onSubmitSuccess, onSubmitError])
 
   const isFormValid = formData.deadline && formData.callbackGasLimit
 

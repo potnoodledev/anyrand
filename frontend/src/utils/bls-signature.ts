@@ -1,36 +1,95 @@
-import { keccak256, getBytes } from 'viem'
+import { keccak256 } from 'viem'
+import { bn254 } from '@kevincharm/noble-bn254-drand'
 
 /**
- * Generate a test BLS signature for frontend testing (browser-compatible fallback)
- * WARNING: This is for TESTNET DEMO ONLY and is not cryptographically secure!
- *
- * This function provides a deterministic signature based on the round and pubKeyHash
- * that works consistently in the browser environment without complex BLS library dependencies
+ * Utility function to convert hex string to Uint8Array (browser-compatible)
+ */
+function hexToBytes(hex: string): Uint8Array {
+  const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex
+  const bytes = new Uint8Array(cleanHex.length / 2)
+  for (let i = 0; i < cleanHex.length; i += 2) {
+    bytes[i / 2] = parseInt(cleanHex.substr(i, 2), 16)
+  }
+  return bytes
+}
+
+/**
+ * Fetch real DRAND signature from the evmnet beacon (like quickstart script)
+ * This fetches actual cryptographically valid signatures instead of mock ones
  */
 export async function generateTestnetBeaconSignature(
   round: bigint,
   pubKeyHash: string = '0xed6820c99270b1f84b30b0d2973ddd6a0f460fe9fc9dcd867dd909c1c1ac20f9'
 ): Promise<[bigint, bigint]> {
-  // Create a deterministic but pseudo-random signature based on round and pubKeyHash
-  // This approach ensures consistency while avoiding complex BLS library issues in browser
+  try {
+    console.log('Fetching real DRAND signature from evmnet beacon...')
 
-  // Combine round and pubKeyHash for deterministic input
-  const roundBytes = getBytes(`0x${round.toString(16).padStart(16, '0')}` as `0x${string}`)
-  const pubKeyBytes = getBytes(pubKeyHash as `0x${string}`)
+    // Use the same approach as the quickstart script - fetch directly from DRAND API
+    const drandUrl = `https://api.drand.sh/v2/beacons/evmnet/rounds/${round.toString()}`
+    console.log('DRAND API URL:', drandUrl)
 
-  // Create combined input for hashing
-  const combinedInput = new Uint8Array(roundBytes.length + pubKeyBytes.length)
-  combinedInput.set(roundBytes, 0)
-  combinedInput.set(pubKeyBytes, roundBytes.length)
+    const response = await fetch(drandUrl)
+    if (!response.ok) {
+      throw new Error(`DRAND API failed: ${response.status} ${response.statusText}`)
+    }
 
-  // Generate two deterministic hashes for signature components
-  const hash1 = keccak256(combinedInput)
-  const hash2 = keccak256(getBytes(hash1))
+    const drandData = await response.json()
+    console.log('DRAND response:', drandData)
 
-  // Convert hashes to signature components
-  // Ensure they're valid field elements by taking modulo a large prime
+    if (!drandData.signature) {
+      throw new Error('No signature in DRAND response')
+    }
+
+    // Parse the G1 point signature using bn254 from noble-bn254-drand (same as quickstart)
+    const signatureHex = drandData.signature
+    console.log('Raw DRAND signature hex:', signatureHex)
+
+    // Decode the signature from hex to bytes
+    const sigBytes = new Uint8Array(signatureHex.match(/.{1,2}/g).map((byte: string) => parseInt(byte, 16)))
+
+    // Parse using bn254 G1 point (matching quickstart approach)
+    const sigPoint = bn254.G1.ProjectivePoint.fromHex(sigBytes).toAffine()
+
+    console.log('✅ Real DRAND signature decoded successfully')
+    console.log('- Signature X:', '0x' + sigPoint.x.toString(16))
+    console.log('- Signature Y:', '0x' + sigPoint.y.toString(16))
+
+    return [sigPoint.x, sigPoint.y]
+
+  } catch (error) {
+    console.error('Failed to fetch real DRAND signature:', error)
+    console.log('⚠️ WARNING: Falling back to mock signature - this will fail contract verification!')
+
+    // Fallback to deterministic signature if DRAND API fails
+    // This WILL fail contract verification but allows testing UI flow
+    return generateDeterministicSignature(round, pubKeyHash)
+  }
+}
+
+/**
+ * Generate a deterministic mock signature as fallback
+ * WARNING: This is NOT cryptographically valid and will likely fail contract verification
+ */
+function generateDeterministicSignature(
+  round: bigint,
+  pubKeyHash: string
+): [bigint, bigint] {
+  // Create deterministic input from round and pubKeyHash
+  const roundHex = round.toString(16).padStart(16, '0')
+  const pubKeyHex = pubKeyHash.startsWith('0x') ? pubKeyHash.slice(2) : pubKeyHash
+  const combinedHex = roundHex + pubKeyHex
+
+  // Generate deterministic hashes
+  const hash1 = keccak256(`0x${combinedHex}` as `0x${string}`)
+  const hash2 = keccak256(hash1)
+
+  // Convert to signature components (modulo BN254 field prime)
   const signatureX = BigInt(hash1) % BigInt('0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47')
   const signatureY = BigInt(hash2) % BigInt('0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47')
+
+  console.log('⚠️ Using deterministic mock signature (will likely fail verification)')
+  console.log('- Mock Signature X:', '0x' + signatureX.toString(16))
+  console.log('- Mock Signature Y:', '0x' + signatureY.toString(16))
 
   return [signatureX, signatureY]
 }

@@ -162,8 +162,8 @@ function RequestCard({ request, onClick, onSelect, selected, selectable }: Reque
 }
 
 export function RequestList({
-  filters,
-  pageSize = 10,
+  filters: _filters,
+  pageSize: _pageSize = 10,
   showUserOnly = false,
   onRequestClick,
   onRequestSelect,
@@ -201,7 +201,7 @@ export function RequestList({
   }, [requests.data, selectedRequests])
 
   // Filter requests based on props
-  const filteredRequests = requests.data.filter(request => {
+  const filteredRequests = requests.data.filter(_request => {
     if (showUserOnly) {
       // In a real implementation, this would filter by connected user address
       return true // Placeholder

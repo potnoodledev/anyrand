@@ -85,7 +85,7 @@ function StatsCard({
 }
 
 export function NetworkStats({
-  refreshInterval = 30000,
+  refreshInterval: _refreshInterval = 30000,
   showDetailedBreakdown = false,
   compact = false,
   className = ''
