@@ -71,68 +71,85 @@ export function useFulfillRequest(): RequestFulfillmentHook {
     return true
   }, [])
 
-  // Generate mock DRAND data for testing
-  const generateMockDrandData = useCallback(() => {
-    const currentRound = BigInt(Math.floor(Date.now() / 30000)) // 30s rounds
-    const mockRandomness = BigInt('0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join(''))
-
-    return {
-      round: currentRound,
-      signature: [
-        BigInt('0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('')),
-        BigInt('0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join(''))
-      ] as [bigint, bigint],
-      randomness: mockRandomness
-    }
-  }, [])
+  // Note: Signature generation is now handled in the calling component using proper BLS signatures
 
   // Fulfill function
   const fulfill = useCallback(async (params: FulfillRequestParams): Promise<FulfillRequestResult> => {
     try {
+      console.log('=== FULFILL HOOK CALLED ===')
       setError(null)
 
+      console.log('=== FULFILL HOOK VALIDATION ===')
+      console.log('contractAddress:', contractAddress)
+      console.log('address (wallet):', address)
+      console.log('chainId:', chainId)
+
       if (!contractAddress) {
+        console.error('Contract not deployed on current network')
         throw new Error('Contract not deployed on current network')
       }
 
       if (!address) {
+        console.error('Wallet not connected')
         throw new Error('Wallet not connected')
       }
 
       if (!canFulfill(params.requestId)) {
+        console.error('Request cannot be fulfilled')
         throw new Error('Request cannot be fulfilled')
       }
 
-      // Generate mock DRAND data for the fulfillment
-      const drandData = generateMockDrandData()
+      // Debug logging like quickstart script
+      console.log('=== FULFILL REQUEST DEBUG ===')
+      console.log('Contract Address:', contractAddress)
+      console.log('Request ID:', params.requestId.toString())
+      console.log('Requester (Consumer):', params.requester)
+      console.log('Pub Key Hash:', params.pubKeyHash)
+      console.log('Round:', params.round.toString())
+      console.log('Callback Gas Limit:', params.callbackGasLimit.toString())
+      console.log('Signature:', params.signature.map(s => '0x' + s.toString(16)))
 
-      // Submit the fulfillment transaction
+      console.log('=== CALLING WRITE CONTRACT ===')
+      // Submit the fulfillment transaction (using params signature, not generating new mock data)
       const txHash = await writeContract({
         address: contractAddress as `0x${string}`,
         abi: ANYRAND_ABI,
         functionName: 'fulfillRandomness',
         args: [
           params.requestId,
-          params.requester,
+          params.requester, // This should now be the consumer contract address
           params.pubKeyHash,
-          drandData.round,
+          params.round, // Use round from params, not generated
           params.callbackGasLimit,
-          params.signature
+          params.signature // Use signature from params
         ]
       })
+
+      console.log('Fulfill transaction submitted:', txHash)
+
+      // Generate randomness for return (in real implementation, this would be derived from the signature)
+      const mockRandomness = BigInt('0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join(''))
 
       return {
         transactionHash: txHash,
         requestId: params.requestId,
-        randomness: drandData.randomness
+        randomness: mockRandomness
       }
 
     } catch (err) {
+      console.error('=== FULFILL HOOK ERROR ===')
+      console.error('Error in fulfill hook:', err)
+      console.error('Error details:', {
+        name: err instanceof Error ? err.name : 'Unknown',
+        message: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : 'No stack trace'
+      })
+
       const error = err instanceof Error ? err : new Error('Unknown error')
       setError(error)
       throw error
     }
-  }, [contractAddress, address, canFulfill, generateMockDrandData, writeContract])
+  }, [contractAddress, address, canFulfill, writeContract])
 
   // Combine all errors
   const combinedError = error || writeError

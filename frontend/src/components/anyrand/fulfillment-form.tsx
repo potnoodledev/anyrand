@@ -61,27 +61,108 @@ export function FulfillmentForm({
 
   // Handle fulfillment
   const handleFulfill = useCallback(async () => {
+    console.log('=== HANDLE FULFILL CALLED ===')
+    console.log('isFulfillable:', isFulfillable)
+    console.log('disabled:', disabled)
+    console.log('isLoading:', isLoading)
+
     if (!isFulfillable || disabled || isLoading) {
+      console.log('Early return due to validation checks')
       return
     }
 
     try {
-      // Generate mock DRAND parameters for fulfillment
-      const mockParams = {
-        requestId: request.id,
-        requester: request.requester,
-        pubKeyHash: request.pubKeyHash,
-        round: BigInt(Math.floor(Date.now() / 30000)), // 30-second rounds
-        callbackGasLimit: request.callbackGasLimit,
-        signature: [
+      console.log('=== STARTING FULFILLMENT PROCESS ===')
+
+      // Get consumer contract address from environment (like quickstart script)
+      const consumerAddress = process.env.NEXT_PUBLIC_CONSUMER_SCROLL_SEPOLIA_ADDRESS
+
+      if (!consumerAddress) {
+        console.error('Consumer address not found in environment')
+        throw new Error('Consumer contract address not found in environment')
+      }
+
+      console.log('=== FULFILLMENT FORM DEBUG ===')
+      console.log('Consumer address:', consumerAddress)
+      console.log('Original requester (wallet):', request.requester)
+      console.log('Using consumer as requester for fulfillment')
+
+      let currentRound: bigint
+      let signature: [bigint, bigint]
+      let usedBLS = false
+
+      try {
+        console.log('=== ATTEMPTING BLS SIGNATURE GENERATION ===')
+        // Generate DRAND parameters for fulfillment (matching quickstart script approach)
+        // In real implementation, this would fetch actual DRAND signature from API
+        const blsModule = await import('../../utils/bls-signature')
+        console.log('BLS module imported successfully')
+
+        currentRound = blsModule.getCurrentDrandRound()
+        console.log('Current round:', currentRound.toString())
+        console.log('Request pubKeyHash:', request.pubKeyHash)
+
+        // Generate proper BLS signature using the same method as quickstart script
+        signature = await blsModule.generateTestnetBeaconSignature(currentRound, request.pubKeyHash)
+        usedBLS = true
+
+        console.log('Generated BLS signature:')
+        console.log('- Signature X:', '0x' + signature[0].toString(16))
+        console.log('- Signature Y:', '0x' + signature[1].toString(16))
+      } catch (blsError) {
+        console.error('BLS signature generation failed:', blsError)
+        console.error('BLS Error details:', {
+          name: blsError instanceof Error ? blsError.name : 'Unknown',
+          message: blsError instanceof Error ? blsError.message : 'Unknown error',
+          stack: blsError instanceof Error ? blsError.stack : 'No stack trace'
+        })
+        console.log('Falling back to simple mock signatures...')
+
+        // Fallback to simple approach if BLS fails
+        const currentTime = Math.floor(Date.now() / 1000)
+        currentRound = BigInt(Math.floor(currentTime / 30))
+        signature = [
           BigInt('0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef'),
           BigInt('0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321')
         ] as [bigint, bigint]
+
+        console.log('Using fallback signature and round:', currentRound.toString())
       }
 
+      console.log('=== PREPARING FULFILL PARAMETERS ===')
+      const mockParams = {
+        requestId: request.id,
+        requester: consumerAddress, // IMPORTANT: Use consumer contract address, not wallet address
+        pubKeyHash: request.pubKeyHash,
+        round: currentRound,
+        callbackGasLimit: request.callbackGasLimit,
+        signature
+      }
+
+      console.log('Fulfill parameters:', {
+        requestId: mockParams.requestId.toString(),
+        requester: mockParams.requester,
+        pubKeyHash: mockParams.pubKeyHash,
+        round: mockParams.round.toString(),
+        callbackGasLimit: mockParams.callbackGasLimit.toString(),
+        signatureUsed: usedBLS ? 'BLS' : 'Fallback',
+        signatureX: '0x' + mockParams.signature[0].toString(16),
+        signatureY: '0x' + mockParams.signature[1].toString(16)
+      })
+
+      console.log('=== CALLING FULFILL FUNCTION ===')
       const result = await fulfill(mockParams)
+      console.log('Fulfill result:', result)
       onFulfillSuccess?.(result)
     } catch (err) {
+      console.error('=== FULFILLMENT ERROR ===')
+      console.error('Error caught in handleFulfill:', err)
+      console.error('Error details:', {
+        name: err instanceof Error ? err.name : 'Unknown',
+        message: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : 'No stack trace'
+      })
+
       const contractError: ContractError = {
         code: 'FULFILLMENT_FAILED',
         message: err instanceof Error ? err.message : 'Unknown error',

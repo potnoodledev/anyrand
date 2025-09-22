@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useAccount, useChainId, useContractRead, useWatchContractEvent } from 'wagmi'
-import { Address } from 'viem'
+import { useAccount, useChainId, useReadContract, useWatchContractEvent, usePublicClient } from 'wagmi'
+import { Address, parseAbiItem } from 'viem'
 import {
   PaginatedQuery,
   RequestQueryFilters,
@@ -13,33 +13,11 @@ import { RandomnessRequest, RequestStatus } from '../../types/anyrand/randomness
 // Contract ABI fragments for reading
 const ANYRAND_ABI = [
   {
-    name: 'getRequest',
+    name: 'getRequestState',
     type: 'function',
     stateMutability: 'view',
     inputs: [{ name: 'requestId', type: 'uint256' }],
-    outputs: [
-      {
-        type: 'tuple',
-        components: [
-          { name: 'id', type: 'uint256' },
-          { name: 'requester', type: 'address' },
-          { name: 'deadline', type: 'uint256' },
-          { name: 'callbackGasLimit', type: 'uint256' },
-          { name: 'feePaid', type: 'uint256' },
-          { name: 'status', type: 'uint8' },
-          { name: 'transactionHash', type: 'bytes32' },
-          { name: 'blockNumber', type: 'uint256' },
-          { name: 'timestamp', type: 'uint256' }
-        ]
-      }
-    ]
-  },
-  {
-    name: 'getRequestCount',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: 'count', type: 'uint256' }]
+    outputs: [{ name: 'state', type: 'uint8' }]
   },
   {
     name: 'RandomnessRequested',
@@ -47,9 +25,31 @@ const ANYRAND_ABI = [
     inputs: [
       { name: 'requestId', type: 'uint256', indexed: true },
       { name: 'requester', type: 'address', indexed: true },
-      { name: 'deadline', type: 'uint256' },
+      { name: 'pubKeyHash', type: 'bytes32', indexed: true },
+      { name: 'round', type: 'uint256' },
       { name: 'callbackGasLimit', type: 'uint256' },
-      { name: 'feePaid', type: 'uint256' }
+      { name: 'feePaid', type: 'uint256' },
+      { name: 'effectiveFeePerGas', type: 'uint256' }
+    ]
+  },
+  {
+    name: 'RandomnessFulfilled',
+    type: 'event',
+    inputs: [
+      { name: 'requestId', type: 'uint256', indexed: true },
+      { name: 'randomness', type: 'uint256' },
+      { name: 'callbackSuccess', type: 'bool' },
+      { name: 'actualGasUsed', type: 'uint256' }
+    ]
+  },
+  {
+    name: 'RandomnessCallbackFailed',
+    type: 'event',
+    inputs: [
+      { name: 'requestId', type: 'uint256', indexed: true },
+      { name: 'retdata', type: 'bytes32' },
+      { name: 'gasLimit', type: 'uint256' },
+      { name: 'actualGasUsed', type: 'uint256' }
     ]
   }
 ] as const
@@ -63,6 +63,7 @@ const CONTRACT_ADDRESSES: Record<number, string> = {
 export function useRequestsQuery(): RequestsQueryHook {
   const { address } = useAccount()
   const chainId = useChainId()
+  const publicClient = usePublicClient()
   const [queryParams, setQueryParams] = useState<RequestQueryParams>({
     page: 1,
     pageSize: 10,
@@ -72,14 +73,122 @@ export function useRequestsQuery(): RequestsQueryHook {
 
   const contractAddress = CONTRACT_ADDRESSES[chainId]
 
-  // Get total request count
-  const { data: totalRequests } = useContractRead({
-    address: contractAddress as `0x${string}`,
-    abi: ANYRAND_ABI,
-    functionName: 'getRequestCount',
-    enabled: Boolean(contractAddress),
-    watch: true
-  })
+  // Fetch contract events to build requests data
+  const fetchContractEvents = useCallback(async (): Promise<RandomnessRequest[]> => {
+    if (!publicClient || !contractAddress) {
+      console.log('Missing publicClient or contractAddress:', { publicClient: !!publicClient, contractAddress })
+      return []
+    }
+
+    try {
+      console.log('Fetching contract events from:', contractAddress)
+
+      // Get current block number
+      const currentBlock = await publicClient.getBlockNumber()
+      // Look back 2 hours worth of blocks (roughly 1,800 blocks per hour on Scroll Sepolia = ~3,600 blocks for 2 hours)
+      // Use very small range for fastest loading: 3,600 blocks (roughly 2 hours)
+      const fromBlock = currentBlock - 3600n
+
+      console.log('Searching blocks:', fromBlock.toString(), 'to', currentBlock.toString())
+
+      // Get RandomnessRequested events
+      const requestedEvents = await publicClient.getLogs({
+        address: contractAddress as `0x${string}`,
+        event: parseAbiItem('event RandomnessRequested(uint256 indexed requestId, address indexed requester, bytes32 indexed pubKeyHash, uint256 round, uint256 callbackGasLimit, uint256 feePaid, uint256 effectiveFeePerGas)'),
+        fromBlock,
+        toBlock: 'latest'
+      })
+
+      console.log('Found RandomnessRequested events:', requestedEvents.length)
+
+      // Get RandomnessFulfilled events
+      const fulfilledEvents = await publicClient.getLogs({
+        address: contractAddress as `0x${string}`,
+        event: parseAbiItem('event RandomnessFulfilled(uint256 indexed requestId, uint256 randomness, bool callbackSuccess, uint256 actualGasUsed)'),
+        fromBlock,
+        toBlock: 'latest'
+      })
+
+      console.log('Found RandomnessFulfilled events:', fulfilledEvents.length)
+
+      // Get RandomnessCallbackFailed events
+      const failedEvents = await publicClient.getLogs({
+        address: contractAddress as `0x${string}`,
+        event: parseAbiItem('event RandomnessCallbackFailed(uint256 indexed requestId, bytes32 retdata, uint256 gasLimit, uint256 actualGasUsed)'),
+        fromBlock,
+        toBlock: 'latest'
+      })
+
+      console.log('Found RandomnessCallbackFailed events:', failedEvents.length)
+
+      // Build requests from events
+      const requestsMap = new Map<string, RandomnessRequest>()
+
+      // Process RandomnessRequested events
+      for (const event of requestedEvents) {
+        const { requestId, requester, pubKeyHash, round, callbackGasLimit, feePaid, effectiveFeePerGas } = event.args
+        const block = await publicClient.getBlock({ blockNumber: event.blockNumber })
+
+        // Calculate deadline from round (estimate)
+        const deadline = BigInt(Number(block.timestamp) + 120) // 2 minutes estimate
+
+        const request: RandomnessRequest = {
+          id: requestId,
+          requester,
+          deadline,
+          callbackGasLimit,
+          feePaid,
+          effectiveFeePerGas,
+          status: RequestStatus.Pending, // Default to pending, will update if fulfilled
+          transactionHash: event.transactionHash,
+          blockNumber: event.blockNumber,
+          timestamp: block.timestamp,
+          pubKeyHash
+        }
+
+        requestsMap.set(requestId.toString(), request)
+      }
+
+      // Process fulfilled events
+      for (const event of fulfilledEvents) {
+        const { requestId, randomness, callbackSuccess, actualGasUsed } = event.args
+        const request = requestsMap.get(requestId.toString())
+        if (request) {
+          request.status = RequestStatus.Fulfilled
+          const block = await publicClient.getBlock({ blockNumber: event.blockNumber })
+
+          request.fulfillment = {
+            requestId,
+            randomness,
+            operator: '0x0000000000000000000000000000000000000000' as Address, // Not available in event
+            callbackSuccess,
+            actualGasUsed,
+            transactionHash: event.transactionHash,
+            blockNumber: event.blockNumber,
+            timestamp: block.timestamp,
+            round: 0n, // Not available in event
+            signature: [0n, 0n] // Not available in event
+          }
+        }
+      }
+
+      // Process failed events
+      for (const event of failedEvents) {
+        const { requestId } = event.args
+        const request = requestsMap.get(requestId.toString())
+        if (request) {
+          request.status = RequestStatus.Failed
+        }
+      }
+
+      const finalRequests = Array.from(requestsMap.values())
+      console.log('Built requests from events:', finalRequests.length, finalRequests)
+      return finalRequests
+    } catch (error) {
+      console.error('Error fetching contract events:', error)
+      return []
+    }
+  }, [publicClient, contractAddress])
 
   // Generate mock request data for testing
   const generateMockRequests = useCallback((count: number, filters?: RequestQueryFilters): RandomnessRequest[] => {
@@ -88,7 +197,23 @@ export function useRequestsQuery(): RequestsQueryHook {
 
     for (let i = 1; i <= count; i++) {
       const timestamp = now - (i * 3600) // Each request 1 hour apart
-      const status = i % 4 // Cycle through status values
+
+      // Create more realistic status distribution with some fulfillable requests
+      let status: RequestStatus
+      if (i <= 3) {
+        // First 3 requests are fulfillable (pending with deadline passed)
+        status = RequestStatus.Pending
+      } else if (i <= 5) {
+        // Next 2 are fulfilled
+        status = RequestStatus.Fulfilled
+      } else if (i <= 7) {
+        // Next 2 are still pending (deadline not passed yet)
+        status = RequestStatus.Pending
+      } else {
+        // Rest cycle through all statuses
+        status = i % 4 as RequestStatus
+      }
+
       const requester = `0x${(i * 1234567890).toString(16).padStart(40, '0')}` as Address
 
       // Apply filters
@@ -97,14 +222,27 @@ export function useRequestsQuery(): RequestsQueryHook {
       if (filters?.fromTimestamp && BigInt(timestamp) < filters.fromTimestamp) continue
       if (filters?.toTimestamp && BigInt(timestamp) > filters.toTimestamp) continue
 
+      // Set deadline based on whether request should be fulfillable
+      let deadline: bigint
+      if (i <= 3 && status === RequestStatus.Pending) {
+        // Make fulfillable: deadline in the past
+        deadline = BigInt(timestamp - 1800) // 30 minutes before creation (already passed)
+      } else if (i <= 7 && status === RequestStatus.Pending) {
+        // Still pending: deadline in the future
+        deadline = BigInt(now + 3600) // 1 hour in the future
+      } else {
+        // Other requests: normal deadline
+        deadline = BigInt(timestamp + 7200) // 2 hours after creation
+      }
+
       const request: RandomnessRequest = {
         id: BigInt(i),
         requester,
-        deadline: BigInt(timestamp + 7200), // 2 hours after creation
-        callbackGasLimit: BigInt(200000),
+        deadline,
+        callbackGasLimit: BigInt(100000), // Match quickstart script
         feePaid: BigInt(1000000000000000 + i * 100000000000000), // Varying fees
         effectiveFeePerGas: BigInt(20000000000), // 20 gwei
-        status: status as RequestStatus,
+        status,
         transactionHash: `0x${(i * 987654321).toString(16).padStart(64, '0')}` as any,
         blockNumber: BigInt(18000000 + i),
         timestamp: BigInt(timestamp),
@@ -137,11 +275,38 @@ export function useRequestsQuery(): RequestsQueryHook {
   const requestsQuery = useQuery({
     queryKey: ['anyrand', 'requests', chainId, queryParams],
     queryFn: async (): Promise<PaginatedQuery<RandomnessRequest>> => {
-      const totalCount = Number(totalRequests || 0n)
       const { page, pageSize, filters, sortBy, sortDirection } = queryParams
 
-      // Generate mock data (in real implementation, this would call contract/indexer)
-      let allRequests = generateMockRequests(totalCount, filters)
+      // Fetch real contract data
+      let allRequests = await fetchContractEvents()
+
+      // If no contract data available, fall back to mock data for testing
+      if (allRequests.length === 0) {
+        console.log('No contract events found, using mock data for testing')
+        allRequests = generateMockRequests(10, filters)
+      }
+
+      // Apply filters
+      if (filters?.requester) {
+        allRequests = allRequests.filter(r =>
+          r.requester.toLowerCase() === filters.requester!.toLowerCase()
+        )
+      }
+      if (filters?.status) {
+        allRequests = allRequests.filter(r =>
+          filters.status!.includes(r.status)
+        )
+      }
+      if (filters?.fromTimestamp) {
+        allRequests = allRequests.filter(r =>
+          r.timestamp >= filters.fromTimestamp!
+        )
+      }
+      if (filters?.toTimestamp) {
+        allRequests = allRequests.filter(r =>
+          r.timestamp <= filters.toTimestamp!
+        )
+      }
 
       // Apply sorting
       allRequests.sort((a, b) => {
@@ -188,7 +353,7 @@ export function useRequestsQuery(): RequestsQueryHook {
         refetch: () => requestsQuery.refetch()
       }
     },
-    enabled: Boolean(contractAddress),
+    enabled: Boolean(contractAddress) && Boolean(publicClient),
     staleTime: 30000, // 30 seconds
     refetchInterval: 60000 // 1 minute
   })

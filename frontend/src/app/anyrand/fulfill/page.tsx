@@ -29,10 +29,16 @@ export default function FulfillPage() {
     }
   }, [requestIdParam, requests.data])
 
-  // Filter fulfillable requests
+  // Filter fulfillable requests (deadline passed)
   const fulfillableRequests = requests.data.filter(request =>
     canFulfillRequest(request) &&
     request.deadline < BigInt(Math.floor(Date.now() / 1000))
+  )
+
+  // Filter pending requests with countdown (deadline not yet passed)
+  const pendingRequests = requests.data.filter(request =>
+    request.status === RequestStatus.Pending &&
+    request.deadline >= BigInt(Math.floor(Date.now() / 1000))
   )
 
   const handleRequestSelect = useCallback((request: RandomnessRequest) => {
@@ -82,7 +88,8 @@ export default function FulfillPage() {
     setFulfillmentError(null)
   }, [])
 
-  const formatTransactionHash = (hash: string) => {
+  const formatTransactionHash = (hash: string | undefined) => {
+    if (!hash) return 'N/A'
     return `${hash.slice(0, 10)}...${hash.slice(-8)}`
   }
 
@@ -109,6 +116,21 @@ export default function FulfillPage() {
           <p className="mt-2 text-lg text-gray-600 dark:text-gray-400">
             Earn rewards by providing verifiable randomness to pending requests using DRAND beacon data.
           </p>
+
+          {/* Debug Info */}
+          <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm">
+            <strong>Debug:</strong> Total requests: {requests.data.length},
+            Fulfillable: {fulfillableRequests.length},
+            Pending: {pendingRequests.length},
+            Loading: {requests.isLoading ? 'Yes' : 'No'}
+            {requests.data.length > 0 && (
+              <div className="mt-2">
+                <strong>Sample request:</strong> ID {requests.data[0]?.id?.toString()},
+                Status: {requests.data[0]?.status},
+                Deadline: {new Date(Number(requests.data[0]?.deadline || 0) * 1000).toLocaleString()}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Success Banner */}
@@ -198,8 +220,9 @@ export default function FulfillPage() {
 
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Left Column - Fulfillable Requests */}
+          {/* Left Column - Requests */}
           <div className="space-y-6">
+            {/* Fulfillable Requests */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
               <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -290,6 +313,86 @@ export default function FulfillPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Pending Requests (Countdown) */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Pending Requests
+                  <span className="ml-2 px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded-full">
+                    {pendingRequests.length}
+                  </span>
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Requests waiting for their deadline to pass
+                </p>
+              </div>
+
+              <div className="p-6">
+                {pendingRequests.length === 0 ? (
+                  <div className="text-center py-12">
+                    <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No pending requests</h3>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      All requests have either been fulfilled or their deadlines have passed.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {pendingRequests.map((request) => {
+                      const now = Math.floor(Date.now() / 1000)
+                      const timeUntilDeadline = Number(request.deadline) - now
+                      const minutes = Math.floor(timeUntilDeadline / 60)
+                      const seconds = timeUntilDeadline % 60
+
+                      return (
+                        <div
+                          key={request.id.toString()}
+                          className="border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+                        >
+                          <div className="flex justify-between items-start mb-3">
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                              Request #{request.id.toString()}
+                            </h3>
+                            <div className="flex items-center space-x-2">
+                              <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                                Countdown
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Fee:</span>
+                              <p className="font-mono text-gray-900 dark:text-white">
+                                {(Number(request.feePaid) / 1e18).toFixed(4)} ETH
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Time Until Fulfillable:</span>
+                              <p className="text-gray-900 dark:text-white font-mono">
+                                {timeUntilDeadline > 0 ? `${minutes}m ${seconds}s` : 'Ready!'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <div
+                              className="bg-yellow-500 h-2 rounded-full transition-all duration-1000"
+                              style={{
+                                width: `${Math.max(0, Math.min(100, ((120 - timeUntilDeadline) / 120) * 100))}%`
+                              }}
+                            ></div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>
