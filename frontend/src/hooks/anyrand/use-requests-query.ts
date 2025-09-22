@@ -70,6 +70,13 @@ export function useRequestsQuery(): RequestsQueryHook {
     sortBy: 'timestamp',
     sortDirection: 'desc'
   })
+  const [blockPage, setBlockPage] = useState(0) // 0 = most recent blocks
+  const [currentBlockInfo, setCurrentBlockInfo] = useState<{
+    currentBlock: bigint
+    fromBlock: bigint
+    toBlock: bigint
+    blockRange: number
+  } | null>(null)
 
   const contractAddress = CONTRACT_ADDRESSES[chainId]
 
@@ -85,11 +92,25 @@ export function useRequestsQuery(): RequestsQueryHook {
 
       // Get current block number
       const currentBlock = await publicClient.getBlockNumber()
-      // Look back 2 hours worth of blocks (roughly 1,800 blocks per hour on Scroll Sepolia = ~3,600 blocks for 2 hours)
-      // Use very small range for fastest loading: 3,600 blocks (roughly 2 hours)
-      const fromBlock = currentBlock - 3600n
 
-      console.log('Searching blocks:', fromBlock.toString(), 'to', currentBlock.toString())
+      // Configurable block range (2 hours worth of blocks for better performance)
+      // Scroll Sepolia: ~3 second block time = 1,200 blocks per hour = 2,400 blocks per 2 hours
+      const BLOCKS_PER_PAGE = 2400n // 2 hours worth of blocks
+
+      // Calculate block range based on pagination
+      const pageOffset = BigInt(blockPage) * BLOCKS_PER_PAGE
+      const toBlock = currentBlock - pageOffset
+      const fromBlock = toBlock - BLOCKS_PER_PAGE + 1n
+
+      // Store current block info for UI display
+      setCurrentBlockInfo({
+        currentBlock,
+        fromBlock,
+        toBlock,
+        blockRange: Number(BLOCKS_PER_PAGE)
+      })
+
+      console.log(`Searching blocks ${fromBlock.toString()} to ${toBlock.toString()} (page ${blockPage}, range: ${BLOCKS_PER_PAGE} blocks)`)
 
       // Get RandomnessRequested events
       const requestedEvents = await publicClient.getLogs({
@@ -188,7 +209,7 @@ export function useRequestsQuery(): RequestsQueryHook {
       console.error('Error fetching contract events:', error)
       return []
     }
-  }, [publicClient, contractAddress])
+  }, [publicClient, contractAddress, blockPage])
 
   // Generate mock request data for testing
   const generateMockRequests = useCallback((count: number, filters?: RequestQueryFilters): RandomnessRequest[] => {
@@ -280,11 +301,8 @@ export function useRequestsQuery(): RequestsQueryHook {
       // Fetch real contract data
       let allRequests = await fetchContractEvents()
 
-      // If no contract data available, fall back to mock data for testing
-      if (allRequests.length === 0) {
-        console.log('No contract events found, using mock data for testing')
-        allRequests = generateMockRequests(10, filters)
-      }
+      // No fallback to mock data - show actual blockchain state
+      console.log(`Found ${allRequests.length} real contract events in block range`)
 
       // Apply filters
       if (filters?.requester) {
@@ -435,6 +453,19 @@ export function useRequestsQuery(): RequestsQueryHook {
     setQueryParams(prev => ({ ...prev, ...newParams }))
   }, [])
 
+  // Block pagination controls
+  const goToNextBlockPage = useCallback(() => {
+    setBlockPage(prev => prev + 1)
+  }, [])
+
+  const goToPreviousBlockPage = useCallback(() => {
+    setBlockPage(prev => Math.max(0, prev - 1))
+  }, [])
+
+  const goToBlockPage = useCallback((page: number) => {
+    setBlockPage(Math.max(0, page))
+  }, [])
+
   return {
     requests: requestsQuery.data || {
       data: [],
@@ -449,7 +480,13 @@ export function useRequestsQuery(): RequestsQueryHook {
     },
     getRequest,
     getUserRequests: getUserRequestsQuery,
-    getPendingRequests: getPendingRequestsQuery
+    getPendingRequests: getPendingRequestsQuery,
+    // Block pagination
+    blockInfo: currentBlockInfo,
+    currentBlockPage: blockPage,
+    goToNextBlockPage,
+    goToPreviousBlockPage,
+    goToBlockPage
   }
 }
 

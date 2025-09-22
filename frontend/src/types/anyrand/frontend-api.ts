@@ -71,11 +71,24 @@ export interface RequestFulfillmentHook {
   canFulfill: (requestId: bigint) => boolean
 }
 
+export interface BlockInfo {
+  currentBlock: bigint
+  fromBlock: bigint
+  toBlock: bigint
+  blockRange: number
+}
+
 export interface RequestsQueryHook {
   requests: PaginatedQuery<RandomnessRequest>
   getRequest: (id: bigint) => RandomnessRequest | undefined
   getUserRequests: (address: Address) => PaginatedQuery<RandomnessRequest>
   getPendingRequests: () => PaginatedQuery<RandomnessRequest>
+  // Block pagination
+  blockInfo: BlockInfo | null
+  currentBlockPage: number
+  goToNextBlockPage: () => void
+  goToPreviousBlockPage: () => void
+  goToBlockPage: (page: number) => void
 }
 
 export interface StatisticsQueryHook {

@@ -14,10 +14,18 @@ export default function FulfillPage() {
   const requestIdParam = searchParams.get('requestId')
   const { addToast } = useToast()
 
-  const { requests } = useRequestsQuery()
+  const {
+    requests,
+    blockInfo,
+    currentBlockPage,
+    goToNextBlockPage,
+    goToPreviousBlockPage,
+    goToBlockPage
+  } = useRequestsQuery()
   const [selectedRequest, setSelectedRequest] = useState<RandomnessRequest | null>(null)
   const [recentFulfillment, setRecentFulfillment] = useState<FulfillRequestResult | null>(null)
   const [fulfillmentError, setFulfillmentError] = useState<ContractError | null>(null)
+  const [isBlockPageChanging, setIsBlockPageChanging] = useState(false)
 
   // Auto-select request if requestId provided in URL
   React.useEffect(() => {
@@ -88,6 +96,36 @@ export default function FulfillPage() {
     setFulfillmentError(null)
   }, [])
 
+  // Wrapper functions for pagination that trigger loading state
+  const handleGoToNextBlockPage = useCallback(() => {
+    setIsBlockPageChanging(true)
+    goToNextBlockPage()
+  }, [goToNextBlockPage])
+
+  const handleGoToPreviousBlockPage = useCallback(() => {
+    setIsBlockPageChanging(true)
+    goToPreviousBlockPage()
+  }, [goToPreviousBlockPage])
+
+  const handleGoToBlockPage = useCallback((page: number) => {
+    setIsBlockPageChanging(true)
+    goToBlockPage(page)
+  }, [goToBlockPage])
+
+  // Combined loading state
+  const isLoading = requests.isLoading || isBlockPageChanging
+
+  // Reset local loading state when requests finish loading
+  React.useEffect(() => {
+    if (!requests.isLoading && isBlockPageChanging) {
+      // Add a small delay to ensure smooth transition
+      const timer = setTimeout(() => {
+        setIsBlockPageChanging(false)
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [requests.isLoading, isBlockPageChanging])
+
   const formatTransactionHash = (hash: string | undefined) => {
     if (!hash) return 'N/A'
     return `${hash.slice(0, 10)}...${hash.slice(-8)}`
@@ -117,19 +155,176 @@ export default function FulfillPage() {
             Earn rewards by providing verifiable randomness to pending requests using DRAND beacon data.
           </p>
 
-          {/* Debug Info */}
-          <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm">
-            <strong>Debug:</strong> Total requests: {requests.data.length},
-            Fulfillable: {fulfillableRequests.length},
-            Pending: {pendingRequests.length},
-            Loading: {requests.isLoading ? 'Yes' : 'No'}
-            {requests.data.length > 0 && (
-              <div className="mt-2">
-                <strong>Sample request:</strong> ID {requests.data[0]?.id?.toString()},
-                Status: {requests.data[0]?.status},
-                Deadline: {new Date(Number(requests.data[0]?.deadline || 0) * 1000).toLocaleString()}
+          {/* Block Range Info & Pagination */}
+          <div className={`mt-4 p-4 border rounded-lg transition-all duration-200 ${
+            isLoading
+              ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700'
+              : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+          }`}>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-2">
+                  <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200">
+                    Blockchain Search Range
+                  </h3>
+                  {isLoading && (
+                    <div className="flex items-center space-x-1">
+                      <svg className="animate-spin h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                        Searching...
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {blockInfo ? (
+                  <div className={`space-y-1 text-xs transition-opacity duration-200 ${
+                    isLoading ? 'text-blue-700 dark:text-blue-400' : 'text-blue-800 dark:text-blue-300'
+                  }`}>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div>
+                        <span className="font-medium">Current Block:</span> #{blockInfo.currentBlock.toString()}
+                      </div>
+                      <div>
+                        <span className="font-medium">Searching:</span> #{blockInfo.fromBlock.toString()} - #{blockInfo.toBlock.toString()}
+                      </div>
+                      <div>
+                        <span className="font-medium">Range:</span> {blockInfo.blockRange.toLocaleString()} blocks (~2h)
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-4 mt-2">
+                      <div>
+                        <span className="font-medium">Page:</span> {currentBlockPage + 1}
+                      </div>
+                      <div className={`transition-all duration-200 ${isLoading ? 'opacity-50' : ''}`}>
+                        <span className="font-medium">Requests Found:</span> {isLoading ? '...' : requests.data.length}
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <span className="font-medium">Status:</span>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          isLoading
+                            ? 'bg-blue-200 text-blue-800 dark:bg-blue-800 dark:text-blue-200'
+                            : 'bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-200'
+                        }`}>
+                          {isLoading ? 'Loading' : 'Ready'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-2 text-xs text-blue-800 dark:text-blue-300">
+                    <svg className="animate-spin h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Loading blockchain data...</span>
+                  </div>
+                )}
               </div>
-            )}
+
+              {/* Block Pagination Controls */}
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleGoToPreviousBlockPage}
+                  disabled={currentBlockPage === 0 || isLoading}
+                  className={`px-3 py-1 text-xs rounded transition-all duration-200 ${
+                    isLoading
+                      ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                      : currentBlockPage === 0
+                      ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  {isLoading ? (
+                    <span className="flex items-center space-x-1">
+                      <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>← Newer</span>
+                    </span>
+                  ) : (
+                    '← Newer'
+                  )}
+                </button>
+                <span className={`text-xs px-2 transition-opacity duration-200 ${
+                  isLoading ? 'text-blue-600 dark:text-blue-400' : 'text-blue-800 dark:text-blue-300'
+                }`}>
+                  Page {currentBlockPage + 1}
+                </span>
+                <button
+                  onClick={handleGoToNextBlockPage}
+                  disabled={isLoading}
+                  className={`px-3 py-1 text-xs rounded transition-all duration-200 ${
+                    isLoading
+                      ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  {isLoading ? (
+                    <span className="flex items-center space-x-1">
+                      <span>Older →</span>
+                      <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    </span>
+                  ) : (
+                    'Older →'
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Jump Controls */}
+            <div className={`mt-3 pt-3 border-t transition-opacity duration-200 ${
+              isLoading ? 'border-blue-300 dark:border-blue-700' : 'border-blue-200 dark:border-blue-800'
+            }`}>
+              <div className="flex items-center space-x-2 text-xs">
+                <span className={`transition-opacity duration-200 ${
+                  isLoading ? 'text-blue-600 dark:text-blue-400' : 'text-blue-800 dark:text-blue-300'
+                }`}>
+                  Quick jump:
+                </span>
+                <button
+                  onClick={() => handleGoToBlockPage(0)}
+                  disabled={currentBlockPage === 0 || isLoading}
+                  className={`px-2 py-1 rounded transition-all duration-200 ${
+                    isLoading
+                      ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                      : currentBlockPage === 0
+                      ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-800'
+                  }`}
+                >
+                  Latest
+                </button>
+                <button
+                  onClick={() => handleGoToBlockPage(12)}
+                  disabled={isLoading}
+                  className={`px-2 py-1 rounded transition-all duration-200 ${
+                    isLoading
+                      ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-800'
+                  }`}
+                >
+                  1 Day Ago
+                </button>
+                <button
+                  onClick={() => handleGoToBlockPage(84)}
+                  disabled={isLoading}
+                  className={`px-2 py-1 rounded transition-all duration-200 ${
+                    isLoading
+                      ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-800'
+                  }`}
+                >
+                  1 Week Ago
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -237,7 +432,7 @@ export default function FulfillPage() {
               </div>
 
               <div className="p-6">
-                {requests.isLoading ? (
+                {isLoading ? (
                   <div className="space-y-4">
                     {[...Array(3)].map((_, i) => (
                       <div key={i} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 animate-pulse">
@@ -257,10 +452,40 @@ export default function FulfillPage() {
                     <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
-                    <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No fulfillable requests</h3>
+                    <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+                      No fulfillable requests in current range
+                    </h3>
                     <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      There are currently no requests past their deadline that can be fulfilled.
+                      {requests.data.length === 0
+                        ? "No requests found in the current block range. Try searching older blocks using pagination above."
+                        : `Found ${requests.data.length} request(s) but none are past their deadline yet.`
+                      }
                     </p>
+                    {requests.data.length === 0 && (
+                      <div className="mt-4">
+                        <button
+                          onClick={handleGoToNextBlockPage}
+                          disabled={isLoading}
+                          className={`inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 ${
+                            isLoading
+                              ? 'text-gray-400 bg-gray-300 cursor-not-allowed'
+                              : 'text-white bg-blue-600 hover:bg-blue-700'
+                          }`}
+                        >
+                          {isLoading ? (
+                            <span className="flex items-center space-x-2">
+                              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              <span>Searching...</span>
+                            </span>
+                          ) : (
+                            'Search Older Blocks'
+                          )}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -338,9 +563,14 @@ export default function FulfillPage() {
                     <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No pending requests</h3>
+                    <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+                      No pending requests in current range
+                    </h3>
                     <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      All requests have either been fulfilled or their deadlines have passed.
+                      {requests.data.length === 0
+                        ? "No requests found in the current block range."
+                        : "All requests in this range have either been fulfilled or deadlines have passed."
+                      }
                     </p>
                   </div>
                 ) : (
