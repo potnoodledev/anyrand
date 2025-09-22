@@ -98,8 +98,8 @@ export function FulfillmentForm({
         const blsModule = await import('../../utils/bls-signature')
         console.log('BLS module imported successfully')
 
-        currentRound = blsModule.getCurrentDrandRound()
-        console.log('Current round:', currentRound.toString())
+        currentRound = request.round // Use the actual round from the request event
+        console.log('Using request round:', currentRound.toString())
         console.log('Request pubKeyHash:', request.pubKeyHash)
 
         // Generate proper BLS signature using the same method as quickstart script
@@ -119,8 +119,7 @@ export function FulfillmentForm({
         console.log('Falling back to simple mock signatures...')
 
         // Fallback to simple approach if BLS fails
-        const currentTime = Math.floor(Date.now() / 1000)
-        currentRound = BigInt(Math.floor(currentTime / 30))
+        currentRound = request.round // Use the actual round from the request event
         signature = [
           BigInt('0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef'),
           BigInt('0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321')

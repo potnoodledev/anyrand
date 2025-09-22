@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useAccount, useChainId, useReadContract, useWatchContractEvent, usePublicClient } from 'wagmi'
+import { useChainId, usePublicClient } from 'wagmi'
 import { Address, parseAbiItem } from 'viem'
 import {
   PaginatedQuery,
@@ -61,7 +61,6 @@ const CONTRACT_ADDRESSES: Record<number, string> = {
 }
 
 export function useRequestsQuery(): RequestsQueryHook {
-  const { address } = useAccount()
   const chainId = useChainId()
   const publicClient = usePublicClient()
   const [queryParams, setQueryParams] = useState<RequestQueryParams>({
@@ -164,7 +163,8 @@ export function useRequestsQuery(): RequestsQueryHook {
           transactionHash: event.transactionHash,
           blockNumber: event.blockNumber,
           timestamp: block.timestamp,
-          pubKeyHash
+          pubKeyHash,
+          round  // Store the actual round from the request event
         }
 
         requestsMap.set(requestId.toString(), request)
@@ -267,7 +267,8 @@ export function useRequestsQuery(): RequestsQueryHook {
         transactionHash: `0x${(i * 987654321).toString(16).padStart(64, '0')}` as any,
         blockNumber: BigInt(18000000 + i),
         timestamp: BigInt(timestamp),
-        pubKeyHash: `0x${i.toString(16).padStart(64, '0')}` as any
+        pubKeyHash: `0x${i.toString(16).padStart(64, '0')}` as any,
+        round: BigInt(Math.floor(timestamp / 30)) // Mock DRAND round based on timestamp
       }
 
       // Add fulfillment data for fulfilled requests

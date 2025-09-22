@@ -2,18 +2,6 @@ import { keccak256 } from 'viem'
 import { bn254 } from '@kevincharm/noble-bn254-drand'
 
 /**
- * Utility function to convert hex string to Uint8Array (browser-compatible)
- */
-function hexToBytes(hex: string): Uint8Array {
-  const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex
-  const bytes = new Uint8Array(cleanHex.length / 2)
-  for (let i = 0; i < cleanHex.length; i += 2) {
-    bytes[i / 2] = parseInt(cleanHex.substr(i, 2), 16)
-  }
-  return bytes
-}
-
-/**
  * Fetch real DRAND signature from the evmnet beacon (like quickstart script)
  * This fetches actual cryptographically valid signatures instead of mock ones
  */
@@ -44,11 +32,8 @@ export async function generateTestnetBeaconSignature(
     const signatureHex = drandData.signature
     console.log('Raw DRAND signature hex:', signatureHex)
 
-    // Decode the signature from hex to bytes
-    const sigBytes = new Uint8Array(signatureHex.match(/.{1,2}/g).map((byte: string) => parseInt(byte, 16)))
-
-    // Parse using bn254 G1 point (matching quickstart approach)
-    const sigPoint = bn254.G1.ProjectivePoint.fromHex(sigBytes).toAffine()
+    // Parse using bn254 G1 point (exactly like quickstart script)
+    const sigPoint = bn254.G1.ProjectivePoint.fromHex(signatureHex).toAffine()
 
     console.log('✅ Real DRAND signature decoded successfully')
     console.log('- Signature X:', '0x' + sigPoint.x.toString(16))

@@ -19,6 +19,7 @@ export interface RandomnessRequest {
   blockNumber: bigint
   timestamp: bigint
   pubKeyHash: Hex
+  round: bigint  // DRAND round number from the request event
   fulfillment?: RandomnessFulfillment
 }
 
