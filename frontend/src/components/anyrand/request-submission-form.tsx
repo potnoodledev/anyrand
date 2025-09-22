@@ -38,14 +38,15 @@ export function RequestSubmissionForm({
   const { submit, simulate, isLoading, error, estimatedFee } = useSubmitRequest()
   const { maxCallbackGasLimit, maxDeadlineDelta } = useContractConstraints()
 
-  // Form state
+  // Form state - using fixed values from quickstart script
   const [formData, setFormData] = useState<FormData>(() => {
+    // Fixed parameters exactly like quickstart script
     const now = new Date()
-    const defaultDeadline = new Date(now.getTime() + 1 * 60 * 1000) // 1 minute from now
+    const defaultDeadline = new Date(now.getTime() + 2 * 60 * 1000) // 2 minutes from now (like quickstart)
 
     return {
-      deadline: defaultValues?.deadline || defaultDeadline.toISOString().slice(0, 16),
-      callbackGasLimit: defaultValues?.callbackGasLimit || '200000'
+      deadline: defaultDeadline.toISOString().slice(0, 16),
+      callbackGasLimit: '100000' // Fixed to match quickstart script
     }
   })
 
@@ -101,9 +102,13 @@ export function RequestSubmissionForm({
     }
 
     try {
+      // Use the exact same parameters as quickstart script
+      const callbackGasLimit = 100000 // Fixed from quickstart
+      const deadline = Math.floor(Date.now() / 1000) + 120 // 2 minutes from now, calculated at submit time
+
       const params = {
-        deadline: BigInt(Math.floor(new Date(formData.deadline).getTime() / 1000)),
-        callbackGasLimit: BigInt(formData.callbackGasLimit)
+        deadline: BigInt(deadline),
+        callbackGasLimit: BigInt(callbackGasLimit)
       }
 
       const result = await submit(params)
@@ -111,10 +116,10 @@ export function RequestSubmissionForm({
 
       // Reset form on success
       const now = new Date()
-      const newDeadline = new Date(now.getTime() + 2 * 60 * 60 * 1000)
+      const newDeadline = new Date(now.getTime() + 2 * 60 * 1000) // 2 minutes from now
       setFormData({
         deadline: newDeadline.toISOString().slice(0, 16),
-        callbackGasLimit: '200000'
+        callbackGasLimit: '100000' // Fixed to match quickstart
       })
     } catch (err) {
       const contractError: ContractError = {
@@ -147,18 +152,15 @@ export function RequestSubmissionForm({
             id="deadline"
             value={formData.deadline}
             onChange={(e) => handleFieldChange('deadline', e.target.value)}
-            disabled={disabled}
-            className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-              errors.deadline
-                ? 'border-red-300 dark:border-red-600'
-                : 'border-gray-300 dark:border-gray-600'
-            } bg-white dark:bg-gray-700 text-gray-900 dark:text-white`}
+            disabled={true}
+            readOnly={true}
+            className={`w-full px-3 py-2 border rounded-md shadow-sm bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300 cursor-not-allowed border-gray-300 dark:border-gray-600`}
           />
           {errors.deadline && (
             <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.deadline}</p>
           )}
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Set when the request expires and becomes fulfillable (1 hour to 7 days from now)
+            Fixed to 2 minutes from now (matches quickstart script)
           </p>
         </div>
 
@@ -172,21 +174,18 @@ export function RequestSubmissionForm({
             id="gasLimit"
             value={formData.callbackGasLimit}
             onChange={(e) => handleFieldChange('callbackGasLimit', e.target.value)}
-            disabled={disabled}
+            disabled={true}
+            readOnly={true}
             min="100000"
             max="1000000"
             step="1000"
-            className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-              errors.callbackGasLimit
-                ? 'border-red-300 dark:border-red-600'
-                : 'border-gray-300 dark:border-gray-600'
-            } bg-white dark:bg-gray-700 text-gray-900 dark:text-white`}
+            className={`w-full px-3 py-2 border rounded-md shadow-sm bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300 cursor-not-allowed border-gray-300 dark:border-gray-600`}
           />
           {errors.callbackGasLimit && (
             <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.callbackGasLimit}</p>
           )}
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Gas limit for your callback function (100,000 - 1,000,000)
+            Fixed to 100,000 (matches quickstart script)
           </p>
         </div>
 

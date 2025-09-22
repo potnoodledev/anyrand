@@ -63,12 +63,12 @@ export function useSubmitRequest(): RequestSubmissionHook {
   const anyrandAddress = ANYRAND_ADDRESSES[chainId]
   const consumerAddress = CONSUMER_ADDRESSES[chainId]
 
-  // Get request price from contract
+  // Get request price from contract (using fixed gas limit from quickstart)
   const { data: requestPriceData } = useReadContract({
     address: anyrandAddress as `0x${string}`,
     abi: ANYRAND_ABI,
     functionName: 'getRequestPrice',
-    args: [100000n], // Default gas limit for price estimation
+    args: [100000n], // Fixed gas limit to match quickstart script
   })
 
   // Calculate estimated fee
