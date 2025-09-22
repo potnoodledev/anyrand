@@ -2,10 +2,12 @@
 
 import { useAccount } from 'wagmi';
 import { ConnectButton } from '@/components/wallet/ConnectButton';
-import { formatDisplayName } from '@/lib/utils/format';
+import { AccountDisplay } from '@/components/wallet/AccountDisplay';
+import { NetworkSelector } from '@/components/wallet/NetworkSelector';
+import { ChainValidationDialog } from '@/components/wallet/ChainValidationDialog';
 
 export default function Home() {
-  const { isConnected, address } = useAccount();
+  const { isConnected } = useAccount();
 
   return (
     <main className="container mx-auto px-4 py-16">
@@ -21,11 +23,12 @@ export default function Home() {
           <ConnectButton size="lg" />
         </div>
 
-        {isConnected && address && (
-          <div className="mt-8">
-            <p className="text-sm text-muted-foreground">
-              Connected as: {formatDisplayName(address)}
-            </p>
+        {isConnected && (
+          <div className="mt-8 space-y-4">
+            <div className="flex flex-col items-center space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4 sm:justify-center">
+              <AccountDisplay showBalance showAvatar />
+              <NetworkSelector />
+            </div>
           </div>
         )}
 
@@ -57,8 +60,27 @@ export default function Home() {
               </p>
             </div>
           </div>
+
+          {isConnected && (
+            <div className="mt-8">
+              <h3 className="text-lg font-semibold mb-4">Demo Features</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="rounded-lg border bg-card p-4">
+                  <h4 className="font-medium mb-2">Account Information</h4>
+                  <AccountDisplay showBalance showAvatar />
+                </div>
+                <div className="rounded-lg border bg-card p-4">
+                  <h4 className="font-medium mb-2">Network Selector</h4>
+                  <NetworkSelector />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Chain validation dialog */}
+      <ChainValidationDialog />
     </main>
   );
 }

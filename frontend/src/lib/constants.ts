@@ -4,9 +4,9 @@ import { type Chain } from 'viem';
  * Network configurations for supported chains
  */
 
-export const base = {
-  id: 8453,
-  name: 'Base',
+export const scroll = {
+  id: 534352,
+  name: 'Scroll',
   nativeCurrency: {
     decimals: 18,
     name: 'Ether',
@@ -14,27 +14,33 @@ export const base = {
   },
   rpcUrls: {
     default: {
-      http: ['https://mainnet.base.org'],
-      webSocket: ['wss://mainnet.base.org'],
+      http: ['https://rpc.scroll.io'],
+      webSocket: ['wss://wss-rpc.scroll.io'],
     },
   },
   blockExplorers: {
     default: {
-      name: 'BaseScan',
-      url: 'https://basescan.org',
+      name: 'Scrollscan',
+      url: 'https://scrollscan.com',
     },
   },
   contracts: {
     anyrand: {
-      address: '0x' as `0x${string}`, // TODO: Add actual contract address
+      address: (process.env.NEXT_PUBLIC_ANYRAND_SCROLL_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    },
+    beacon: {
+      address: (process.env.NEXT_PUBLIC_BEACON_SCROLL_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    },
+    gasStation: {
+      address: (process.env.NEXT_PUBLIC_GAS_STATION_SCROLL_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
     },
   },
   testnet: false,
 } as const satisfies Chain;
 
-export const baseSepolia = {
-  id: 84532,
-  name: 'Base Sepolia',
+export const scrollSepolia = {
+  id: 534351,
+  name: 'Scroll Sepolia',
   nativeCurrency: {
     decimals: 18,
     name: 'Ether',
@@ -42,19 +48,58 @@ export const baseSepolia = {
   },
   rpcUrls: {
     default: {
-      http: ['https://sepolia.base.org'],
-      webSocket: ['wss://sepolia.base.org'],
+      http: ['https://sepolia-rpc.scroll.io'],
+      webSocket: ['wss://sepolia-rpc-ws.scroll.io'],
     },
   },
   blockExplorers: {
     default: {
-      name: 'BaseScan',
-      url: 'https://sepolia.basescan.org',
+      name: 'Scrollscan',
+      url: 'https://sepolia.scrollscan.com',
     },
   },
   contracts: {
     anyrand: {
-      address: '0x' as `0x${string}`, // TODO: Add actual contract address
+      address: (process.env.NEXT_PUBLIC_ANYRAND_SCROLL_SEPOLIA_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    },
+    beacon: {
+      address: (process.env.NEXT_PUBLIC_BEACON_SCROLL_SEPOLIA_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    },
+    gasStation: {
+      address: (process.env.NEXT_PUBLIC_GAS_STATION_SCROLL_SEPOLIA_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    },
+  },
+  testnet: true,
+} as const satisfies Chain;
+
+export const localhost = {
+  id: 31337,
+  name: 'Localhost',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'Ether',
+    symbol: 'ETH',
+  },
+  rpcUrls: {
+    default: {
+      http: ['http://127.0.0.1:8545'],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: 'Local Explorer',
+      url: 'http://localhost:8545',
+    },
+  },
+  contracts: {
+    anyrand: {
+      address: (process.env.NEXT_PUBLIC_ANYRAND_LOCAL_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    },
+    beacon: {
+      address: (process.env.NEXT_PUBLIC_BEACON_LOCAL_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    },
+    gasStation: {
+      address: (process.env.NEXT_PUBLIC_GAS_STATION_LOCAL_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
     },
   },
   testnet: true,
@@ -63,12 +108,12 @@ export const baseSepolia = {
 /**
  * Supported chains for the application
  */
-export const SUPPORTED_CHAINS = [base, baseSepolia] as const;
+export const SUPPORTED_CHAINS = [scroll, scrollSepolia, localhost] as const;
 
 /**
- * Default chain for the application
+ * Default chain for the application (determined dynamically based on deployments)
  */
-export const DEFAULT_CHAIN = baseSepolia;
+export const DEFAULT_CHAIN = scrollSepolia;
 
 /**
  * Application metadata for wallet connections

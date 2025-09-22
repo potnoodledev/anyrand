@@ -3,7 +3,7 @@
 import { createAppKit } from '@reown/appkit/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { WagmiProvider } from 'wagmi';
+import { WagmiProvider, type State } from 'wagmi';
 import { ThemeProvider } from 'next-themes';
 import { wagmiAdapter } from './wagmi';
 import { SUPPORTED_CHAINS, APP_METADATA, WALLETCONNECT_PROJECT_ID } from './constants';
@@ -15,7 +15,7 @@ import { useTheme } from 'next-themes';
  */
 const appKit = createAppKit({
   adapters: [wagmiAdapter],
-  networks: SUPPORTED_CHAINS,
+  networks: [...SUPPORTED_CHAINS],
   allowUnsupportedChain: false, // Strict chain validation
   projectId: WALLETCONNECT_PROJECT_ID!,
   metadata: APP_METADATA,
@@ -73,7 +73,7 @@ export function Providers({
   initialState,
 }: {
   children: React.ReactNode;
-  initialState?: unknown;
+  initialState?: State;
 }) {
   const queryClient = getQueryClient();
 

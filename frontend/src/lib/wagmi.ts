@@ -6,7 +6,7 @@ import { SUPPORTED_CHAINS, WALLETCONNECT_PROJECT_ID } from './constants';
  * Wagmi adapter configuration for Reown AppKit
  */
 export const wagmiAdapter = new WagmiAdapter({
-  networks: SUPPORTED_CHAINS,
+  networks: [...SUPPORTED_CHAINS],
   projectId: WALLETCONNECT_PROJECT_ID!,
   ssr: true, // Enable SSR support for Next.js
   storage: createStorage({

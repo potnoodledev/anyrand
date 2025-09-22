@@ -65,16 +65,16 @@
 - [x] T021 Create providers component in /frontend/src/lib/providers.tsx with WagmiProvider and QueryClientProvider
 
 ### Hooks Implementation
-- [ ] T022 [P] Implement useWalletConnection hook in /frontend/src/hooks/useWalletConnection.ts
-- [ ] T023 [P] Implement useAccountInfo hook in /frontend/src/hooks/useAccountInfo.ts
-- [ ] T024 [P] Implement useNetworkState hook in /frontend/src/hooks/useNetworkState.ts
-- [ ] T025 [P] Implement useSessionPersistence hook in /frontend/src/hooks/useSessionPersistence.ts
+- [x] T022 [P] Implement useWalletConnection hook in /frontend/src/hooks/useWalletConnection.ts
+- [x] T023 [P] Implement useAccountInfo hook in /frontend/src/hooks/useAccountInfo.ts
+- [x] T024 [P] Implement useNetworkState hook in /frontend/src/hooks/useNetworkState.ts
+- [x] T025 [P] Implement useSessionPersistence hook in /frontend/src/hooks/useSessionPersistence.ts
 
 ### Components Implementation
 - [x] T026 [P] Create ConnectButton component in /frontend/src/components/wallet/ConnectButton.tsx
-- [ ] T027 [P] Create AccountDisplay component in /frontend/src/components/wallet/AccountDisplay.tsx
-- [ ] T028 [P] Create NetworkSelector component in /frontend/src/components/wallet/NetworkSelector.tsx
-- [ ] T029 [P] Create ChainValidationDialog component in /frontend/src/components/wallet/ChainValidationDialog.tsx
+- [x] T027 [P] Create AccountDisplay component in /frontend/src/components/wallet/AccountDisplay.tsx
+- [x] T028 [P] Create NetworkSelector component in /frontend/src/components/wallet/NetworkSelector.tsx
+- [x] T029 [P] Create ChainValidationDialog component in /frontend/src/components/wallet/ChainValidationDialog.tsx
 
 ## Phase 3.4: Integration
 - [x] T030 Update root layout in /frontend/src/app/layout.tsx with providers and SSR state initialization
