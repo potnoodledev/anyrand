@@ -3,6 +3,8 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/lib/providers';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { Navigation } from '@/components/ui/navigation';
+import { ToastProvider } from '@/components/ui/toast';
 import { cookieToInitialState } from 'wagmi';
 import { headers } from 'next/headers';
 import { wagmiConfig } from '@/lib/wagmi';
@@ -34,9 +36,12 @@ export default async function RootLayout({
       <body className={inter.className}>
         <ErrorBoundary>
           <Providers initialState={initialState}>
-            <div className="min-h-screen bg-background">
-              {children}
-            </div>
+            <ToastProvider>
+              <div className="min-h-screen bg-background">
+                <Navigation />
+                {children}
+              </div>
+            </ToastProvider>
           </Providers>
         </ErrorBoundary>
       </body>
