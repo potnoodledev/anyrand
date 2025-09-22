@@ -294,7 +294,7 @@ export function useRequestsQuery(): RequestsQueryHook {
 
   // Main requests query
   const requestsQuery = useQuery({
-    queryKey: ['anyrand', 'requests', chainId, queryParams],
+    queryKey: ['anyrand', 'requests', chainId, queryParams, blockPage],
     queryFn: async (): Promise<PaginatedQuery<RandomnessRequest>> => {
       const { page, pageSize, filters, sortBy, sortDirection } = queryParams
 
@@ -372,8 +372,11 @@ export function useRequestsQuery(): RequestsQueryHook {
       }
     },
     enabled: Boolean(contractAddress) && Boolean(publicClient),
-    staleTime: 30000, // 30 seconds
-    refetchInterval: 60000 // 1 minute
+    staleTime: 0, // Always consider data stale so new page requests fetch fresh data
+    refetchInterval: false, // Disable automatic refetching
+    refetchOnWindowFocus: false, // Don't refetch when window regains focus
+    refetchOnReconnect: false, // Don't refetch on network reconnect
+    refetchOnMount: true // Only refetch when component mounts
   })
 
   // Single request getter
@@ -436,17 +439,18 @@ export function useRequestsQuery(): RequestsQueryHook {
     }
   }, [requestsQuery])
 
-  // Listen for new request events
-  useWatchContractEvent({
-    address: contractAddress as `0x${string}`,
-    abi: ANYRAND_ABI,
-    eventName: 'RandomnessRequested',
-    onLogs: (logs) => {
-      // Invalidate and refetch requests when new events come in
-      requestsQuery.refetch()
-    },
-    enabled: Boolean(contractAddress)
-  })
+  // Disabled automatic event watching to prevent unnecessary RPC calls
+  // Real-time updates aren't needed for historical pagination
+  // useWatchContractEvent({
+  //   address: contractAddress as `0x${string}`,
+  //   abi: ANYRAND_ABI,
+  //   eventName: 'RandomnessRequested',
+  //   onLogs: (logs) => {
+  //     // Invalidate and refetch requests when new events come in
+  //     requestsQuery.refetch()
+  //   },
+  //   enabled: Boolean(contractAddress)
+  // })
 
   // Update query parameters
   const updateQueryParams = useCallback((newParams: Partial<RequestQueryParams>) => {
