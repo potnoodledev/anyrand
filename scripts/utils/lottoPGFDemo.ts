@@ -128,25 +128,36 @@ export async function createLotteryDemo(
         'function gamePeriod() external view returns (uint256)'
     ]
 
-    // Step 1.5: Register all players as beneficiaries (required for public goods funding)
-    console.log('\n1.5. Registering all players as beneficiaries...')
-    const lotteryOwner = new ethers.Contract(lotteryAddress, lotteryABI, deployer)
+    // Get detailed lottery information
+    const lottery = new ethers.Contract(lotteryAddress, lotteryABI, deployer)
+    const currentGameInfo = await lottery.currentGame()
+    const gameData = await lottery.gameData(currentGameInfo.id)
+    const jackpot = await lottery.jackpot()
 
-    for (let i = 0; i < players.length; i++) {
-        const player = players[i]
-        const playerDisplayName = `Demo Player ${i + 1}`
+    console.log('\n📊 Detailed Lottery Information:')
+    console.log('- Lottery ID:', currentGameInfo.id.toString())
+    console.log('- Current Jackpot:', formatEther(jackpot), 'ETH')
+    console.log('- Game State:', currentGameInfo.state.toString())
+    console.log('- Game Started At:', new Date(Number(gameData.startedAt) * 1000).toLocaleString())
+    console.log('- Game Duration:', gamePeriod / 60, 'minutes')
+    console.log('- Tickets Sold So Far:', gameData.ticketsSold.toString())
+    console.log('- Prize Token:', prizeToken)
+    console.log('- Community Fee:', communityFeeBps / 100, '%')
 
-        try {
-            const setBeneficiaryTx = await lotteryOwner.setBeneficiary(
-                player.address,
-                playerDisplayName,
-                true
-            )
-            await setBeneficiaryTx.wait()
-            console.log(`✅ Player ${i + 1} registered as beneficiary:`, player.address)
-        } catch (error) {
-            console.log(`⚠️  Player ${i + 1} registration failed:`, error instanceof Error ? error.message : error)
-        }
+    // Step 1.5: Register deployer as beneficiary (deployer is lottery owner)
+    console.log('\n1.5. Registering deployer as beneficiary...')
+
+    try {
+        const setBeneficiaryTx = await lottery.setBeneficiary(
+            deployer.address,
+            'Demo Beneficiary',
+            true
+        )
+        await setBeneficiaryTx.wait()
+        console.log('✅ Deployer registered as beneficiary:', deployer.address)
+    } catch (error: any) {
+        console.log('⚠️  Beneficiary registration failed:', error.message)
+        console.log('   This may be expected if beneficiary is already registered')
     }
 
     // Step 2: Multiple players buy lottery tickets
@@ -164,7 +175,6 @@ export async function createLotteryDemo(
     }
     console.log('✅ ETH Adapter contract verified at:', deployment.looteryETHAdapter)
 
-    const lottery = new ethers.Contract(lotteryAddress, lotteryABI, players[0])
     const playerTickets: Array<{playerIndex: number, ticketId: number, numbers: number[]}> = []
 
     // Each player buys a ticket with different numbers
@@ -201,42 +211,58 @@ export async function createLotteryDemo(
             pick: finalNumbers.map(n => Math.max(1, Math.min(255, n)))
         }]
 
-        const buyTx = await ethAdapter.purchase(
-            lotteryAddress,
-            tickets,
-            player.address,
-            { value: ticketPrice }
-        )
-        await buyTx.wait()
+        try {
+            // Use deployer as beneficiary since we can't register other beneficiaries
+            const buyTx = await ethAdapter.purchase(
+                lotteryAddress,
+                tickets,
+                deployer.address, // Use deployer as beneficiary for demo
+                { value: ticketPrice }
+            )
+            await buyTx.wait()
 
-        const ticketId = i + 1
-        playerTickets.push({
-            playerIndex: i,
-            ticketId: ticketId,
-            numbers: finalNumbers
-        })
+            const ticketId = i + 1
+            playerTickets.push({
+                playerIndex: i,
+                ticketId: ticketId,
+                numbers: finalNumbers
+            })
 
-        console.log(`✅ Player ${i + 1} ticket purchased! Ticket ID: ${ticketId}`)
+            console.log(`✅ Player ${i + 1} ticket purchased! Ticket ID: ${ticketId}`)
+        } catch (error: any) {
+            console.log(`❌ Player ${i + 1} ticket purchase failed!`)
+            console.log('Error:', error.message || error)
+            if (error.data) {
+                console.log('Error data:', error.data)
+            }
+            if (error.reason) {
+                console.log('Error reason:', error.reason)
+            }
+            if (error.code) {
+                console.log('Error code:', error.code)
+            }
+            throw error; // Re-throw to stop execution
+        }
     }
 
     console.log(`\n✅ All ${players.length} players have purchased tickets!`)
 
-    // Step 3: Get current game info
-    const currentGameInfo = await lottery.currentGame()
-    const currentGameId = currentGameInfo.id
-    const gameData = await lottery.gameData(currentGameId)
+    // Step 3: Get updated game info
+    const updatedGameInfo = await lottery.currentGame()
+    const currentGameId = updatedGameInfo.id
+    const updatedGameData = await lottery.gameData(currentGameId)
     const contractGamePeriod = await lottery.gamePeriod()
 
     console.log('\n3. Current Game Information:')
     console.log('- Game ID:', currentGameId.toString())
-    console.log('- Game State:', currentGameInfo.state)
-    console.log('- Tickets Sold:', gameData.ticketsSold.toString())
-    console.log('- Game Started At:', new Date(Number(gameData.startedAt) * 1000).toLocaleString())
+    console.log('- Game State:', updatedGameInfo.state)
+    console.log('- Tickets Sold:', updatedGameData.ticketsSold.toString())
+    console.log('- Game Started At:', new Date(Number(updatedGameData.startedAt) * 1000).toLocaleString())
     console.log('- Game Period:', (Number(contractGamePeriod) / 60).toFixed(0), 'minutes')
 
-    const drawScheduledAt = Number(gameData.startedAt) + Number(contractGamePeriod)
+    const drawScheduledAt = Number(updatedGameData.startedAt) + Number(contractGamePeriod)
     console.log('- Draw Scheduled At:', new Date(drawScheduledAt * 1000).toLocaleString())
-    console.log('- Winning Pick ID:', gameData.winningPickId.toString(), '(0 means not drawn yet)')
+    console.log('- Winning Pick ID:', updatedGameData.winningPickId.toString(), '(0 means not drawn yet)')
 
     // Step 4: Check if we can draw winning numbers (if game period has ended)
     const currentTime = Math.floor(Date.now() / 1000)
@@ -274,8 +300,8 @@ export async function createLotteryDemo(
     }
 
     // Refresh game data and check if we can draw now
-    const updatedGameData = await lottery.gameData(currentGameId)
-    isDrawn = updatedGameData.winningPickId !== 0n
+    const refreshedGameData = await lottery.gameData(currentGameId)
+    isDrawn = refreshedGameData.winningPickId !== 0n
     const nowCanDraw = Math.floor(Date.now() / 1000) >= drawScheduledAt
 
     if (waitForDraw && nowCanDraw && !isDrawn) {
@@ -290,13 +316,26 @@ export async function createLotteryDemo(
             await drawTx.wait()
             console.log('✅ Drawing initiated! Randomness request sent to Anyrand.')
             randomnessRequested = true
-        } catch (error) {
-            console.log('❌ Draw failed (expected in local testing):', error instanceof Error ? error.message.slice(0, 100) + '...' : 'Unknown error')
-            console.log('📝 This is normal for local testing - in production, real drand signatures would complete the draw')
+        } catch (error: any) {
+            console.log('❌ Draw failed:', error instanceof Error ? error.message : 'Unknown error')
+            if (error.data) {
+                console.log('Error data:', error.data)
+            }
+            if (error.reason) {
+                console.log('Error reason:', error.reason)
+            }
+            if (error.code) {
+                console.log('Error code:', error.code)
+            }
+            if (chainId !== 31337n) {
+                console.log('⚠️  This should work on testnet - investigating the issue...')
+            } else {
+                console.log('📝 This is expected for local testing with test signatures')
+            }
             randomnessRequested = false
         }
     } else if (isDrawn) {
-        console.log('✅ Numbers already drawn! Winning Pick ID:', updatedGameData.winningPickId.toString())
+        console.log('✅ Numbers already drawn! Winning Pick ID:', refreshedGameData.winningPickId.toString())
     }
 
     // Step 5: Check all players' ticket status

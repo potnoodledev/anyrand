@@ -202,15 +202,16 @@ async function main() {
     console.log('✅ Consumer contract ready\n')
 
     // ========================================================================
-    // STEP 4: REQUEST RANDOMNESS
+    // STEP 4-6: SKIPPING RANDOMNESS TESTS TO FOCUS ON LOTTERY
     // ========================================================================
-    console.log('STEP 4: Request Randomness')
+    console.log('STEP 4-6: Skipping Randomness Tests')
     console.log('-------------------------------------\n')
+    console.log('Skipping Steps 4-6 to focus on lottery drawing functionality...\n')
 
-    // Connect to contracts
-    const beacon = DrandBeacon__factory.connect(BEACON_ADDRESS, deployer)
+    // Skip to LottoPGF demo directly
 
-    // Debug: Check beacon configuration
+    /*
+    // Debug: Check beacon configuration - COMMENTED OUT FOR LOTTERY FOCUS
     console.log('Verifying beacon configuration...')
     try {
         const beaconPubKeyHash = await beacon.publicKeyHash()
@@ -221,7 +222,7 @@ async function main() {
 
     // Configuration
     const callbackGasLimit = 100_000
-    const deadline = Math.floor(Date.now() / 1000) + 120 // 2 minutes from now (more time for testnet)
+    const deadline = Math.floor(Date.now() / 1000) + 300 // 5 minutes from now (more buffer for testnet)
 
     console.log('Request configuration:')
     console.log('- Callback gas limit:', callbackGasLimit.toLocaleString())
@@ -571,13 +572,14 @@ async function main() {
         console.log('🔧 In production, a keeper service handles automatic fulfillment')
         console.log('')
     }
+    */ // END COMMENT BLOCK - SKIPPED RANDOMNESS TESTS
 
     // ========================================================================
-    // STEP 7: LOTTOPGF LOTTERY DEMO (if deployed)
+    // STEP 4: LOTTOPGF LOTTERY DEMO (RENUMBERED)
     // ========================================================================
     if (lottoPGFDeployment) {
         console.log('\n========================================')
-        console.log('STEP 7: LottoPGF Lottery Demonstration')
+        console.log('STEP 4: LottoPGF Lottery Demonstration')
         console.log('========================================')
 
         let demoResult: any = null
@@ -586,7 +588,7 @@ async function main() {
             demoResult = await createLotteryDemo(
                 lottoPGFDeployment,
                 ANYRAND_ADDRESS as `0x${string}`,
-                true // waitForDraw = true to wait for actual 2-minute game completion
+                true // waitForDraw = true for complete 2-minute lottery experience
             )
 
             console.log('\n✨ LottoPGF demonstration complete!')
