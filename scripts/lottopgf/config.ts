@@ -17,7 +17,7 @@ export const config: Config = {
     },
     '534351': {
         /** scroll sepolia */
-        anyrand: '0x86d8C50E04DDd04cdaafaC9672cf1D00b6057AF5',
+        anyrand: '0xdFB68D4a5703bC99bEe0A8eb48fA12aBF1280aaC',
         weth: '0x5300000000000000000000000000000000000004',
         owner: '0xFDbdDD397b9B643C7c28e9AeFBA8751253A320a5',
         feeRecipient: '0xFDbdDD397b9B643C7c28e9AeFBA8751253A320a5',

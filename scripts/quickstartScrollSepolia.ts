@@ -582,20 +582,25 @@ async function main() {
 
         let demoResult: any = null
         try {
-            // Create lottery and buy ticket
-            demoResult = await createLotteryDemo(lottoPGFDeployment, ANYRAND_ADDRESS as `0x${string}`)
+            // Create lottery, buy tickets (but skip 10-minute wait for demo)
+            demoResult = await createLotteryDemo(
+                lottoPGFDeployment,
+                ANYRAND_ADDRESS as `0x${string}`,
+                false // waitForDraw = false to skip 10-minute wait on testnet
+            )
 
             console.log('\n✨ LottoPGF demonstration complete!')
             console.log('This showcased:')
-            console.log('• Lottery creation with Anyrand integration')
-            console.log('• Ticket purchasing and number selection')
-            console.log('• Prepared for verifiable random number generation')
-            console.log('• Prize pool creation for public goods funding')
+            console.log('• Multi-player lottery with 3 participants')
+            console.log('• Beneficiary registration and ticket purchasing')
+            console.log('• 10-minute game period setup (demo skipped wait for practicality)')
+            console.log('• Integration with Anyrand for verifiable randomness')
+            console.log('• Complete lottery structure with winner determination ready')
 
             if (demoResult.randomnessRequested) {
                 console.log('')
-                console.log('⏳ Note: On Scroll Sepolia, randomness fulfillment may take up to 30 seconds')
-                console.log('   You can check back on the lottery contract to see final results!')
+                console.log('⏳ Note: On Scroll Sepolia, randomness fulfillment uses real drand signatures')
+                console.log('   The drawing should complete successfully with actual verifiable randomness!')
                 console.log('   Lottery address:', demoResult.lotteryAddress)
             }
 
