@@ -10,6 +10,7 @@ import * as dotenv from 'dotenv'
 import { getDrandBeaconRound, getDrandBeaconInfo } from '../lib/drand'
 import { deployLottoPGF } from './lottopgf/deployLottoPGF'
 import { saveLottoPGFAddresses, readLottoPGFAddresses } from './utils/envHandler'
+import { createLotteryDemo, checkLotteryResults } from './utils/lottoPGFDemo'
 
 /**
  * Complete Anyrand Quickstart for Scroll Sepolia Testnet
@@ -571,7 +572,44 @@ async function main() {
         console.log('')
     }
 
-    console.log('🎯 Your Anyrand Scroll Sepolia environment is ready!')
+    // ========================================================================
+    // STEP 7: LOTTOPGF LOTTERY DEMO (if deployed)
+    // ========================================================================
+    if (lottoPGFDeployment) {
+        console.log('\n========================================')
+        console.log('STEP 7: LottoPGF Lottery Demonstration')
+        console.log('========================================')
+
+        let demoResult: any = null
+        try {
+            // Create lottery and buy ticket
+            demoResult = await createLotteryDemo(lottoPGFDeployment, ANYRAND_ADDRESS as `0x${string}`)
+
+            console.log('\n✨ LottoPGF demonstration complete!')
+            console.log('This showcased:')
+            console.log('• Lottery creation with Anyrand integration')
+            console.log('• Ticket purchasing and number selection')
+            console.log('• Prepared for verifiable random number generation')
+            console.log('• Prize pool creation for public goods funding')
+
+            if (demoResult.randomnessRequested) {
+                console.log('')
+                console.log('⏳ Note: On Scroll Sepolia, randomness fulfillment may take up to 30 seconds')
+                console.log('   You can check back on the lottery contract to see final results!')
+                console.log('   Lottery address:', demoResult.lotteryAddress)
+            }
+
+        } catch (error) {
+            console.log('\n❌ LottoPGF demo failed:')
+            console.log('   ', error instanceof Error ? error.message : error)
+            console.log('   Please check the error above and ensure all contract requirements are met.')
+            console.log('   The LottoPGF deployment itself may still be working correctly.')
+        }
+
+        console.log('\n📋 You can interact with your lottery at:', demoResult?.lotteryAddress || 'See console above')
+    }
+
+    console.log('\n🎯 Your Anyrand + LottoPGF Scroll Sepolia environment is ready!')
     console.log('')
     console.log('Next steps for production:')
     console.log('1. Set up a keeper service to fetch drand signatures')

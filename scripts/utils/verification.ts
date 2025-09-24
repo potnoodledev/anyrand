@@ -1,6 +1,7 @@
 import { ethers } from 'hardhat'
 import { LooteryFactory__factory } from '../../typechain-types'
 import { LottoPGFDeployment } from '../lottopgf/deployLottoPGF'
+import { getDynamicConfig } from '../lottopgf/config'
 
 /**
  * Verify that deployed LottoPGF contracts are functional
@@ -58,25 +59,35 @@ export async function verifyLottoPGFDeployment(
             // Get the current gas price for estimation
             const gasPrice = await ethers.provider.getGasPrice()
 
+            // Get network configuration for WETH address
+            const chainId = await ethers.provider.getNetwork().then((network) => network.chainId)
+            const config = getDynamicConfig(chainId.toString(), anyrandAddress)
+
             // Prepare lottery creation parameters
-            const initConfig = {
-                owner: deployer.address,
-                name: 'Test Lottery',
-                symbol: 'TEST',
-                pickLength: 5,
-                maxBallValue: 36,
-                gamePeriod: 3600, // 1 hour
-                ticketPrice: ethers.parseEther('0.01'),
-                communityFeeBps: 5000, // 50%
-                randomiser: anyrandAddress,
-                prizeToken: ethers.ZeroAddress, // ETH
-                stakeToken: ethers.ZeroAddress,
-                ticketSVGRenderer: deployment.ticketSVGRenderer,
-                prizeTokenDecimals: 18
-            }
+            const name = 'Test Lottery'
+            const symbol = 'TEST'
+            const pickLength = 5
+            const maxBallValue = 36
+            const gamePeriod = 600 // 10 minutes (minimum required by contract)
+            const ticketPrice = ethers.parseEther('0.01')
+            const communityFeeBps = 5000 // 50%
+            const prizeToken = config.weth !== ethers.ZeroAddress ? config.weth : '0x' + '1'.repeat(40) // Use WETH or dummy address for gas estimation
+            const seedJackpotDelay = 1 // 1 second (minimum required)
+            const seedJackpotMinValue = 1 // 1 wei (minimum required)
 
             // Estimate gas for creating a lottery
-            const estimatedGas = await factory.createLootery.estimateGas(initConfig)
+            const estimatedGas = await factory.create.estimateGas(
+                name,
+                symbol,
+                pickLength,
+                maxBallValue,
+                gamePeriod,
+                ticketPrice,
+                communityFeeBps,
+                prizeToken,
+                seedJackpotDelay,
+                seedJackpotMinValue
+            )
             console.log(`✅ Factory can create lottery (estimated gas: ${estimatedGas.toString()})`)
 
         } catch (error) {

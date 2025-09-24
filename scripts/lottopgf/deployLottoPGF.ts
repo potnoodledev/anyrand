@@ -5,6 +5,7 @@ import LooteryImplModule from '../../ignition/modules/LooteryImplV1_9_0'
 import LooteryFactoryModule from '../../ignition/modules/LooteryFactory'
 import LooteryETHAdapterModule from '../../ignition/modules/LooteryETHAdapter'
 import TicketSVGRendererModule from '../../ignition/modules/TicketSVGRenderer'
+import MockWETHModule from '../../ignition/modules/MockWETH'
 import { getAddress, ZeroAddress } from 'ethers'
 
 export interface LottoPGFDeployment {
@@ -35,7 +36,15 @@ export async function deployLottoPGF(
 
     // Get network config with dynamic Anyrand address
     const config = getDynamicConfig(chainId.toString(), anyrandAddress)
-    const { weth, owner, feeRecipient } = config
+    let { weth, owner, feeRecipient } = config
+
+    // Deploy MockWETH for localhost if WETH is zero address
+    if (network === 'localhost' && weth === ZeroAddress) {
+        console.log('\nDeploying MockWETH for local testing...')
+        const { mockWETH } = await ignition.deploy(MockWETHModule)
+        weth = await mockWETH.getAddress() as `0x${string}`
+        console.log(`   ✅ MockWETH deployed at: ${weth}`)
+    }
 
     console.log('Configuration:')
     console.log(`  Chain ID: ${chainId}`)
