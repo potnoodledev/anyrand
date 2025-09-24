@@ -582,20 +582,20 @@ async function main() {
 
         let demoResult: any = null
         try {
-            // Create lottery, buy tickets (but skip 10-minute wait for demo)
+            // Create lottery, buy tickets, and wait for game resolution
             demoResult = await createLotteryDemo(
                 lottoPGFDeployment,
                 ANYRAND_ADDRESS as `0x${string}`,
-                false // waitForDraw = false to skip 10-minute wait on testnet
+                true // waitForDraw = true to wait for actual 2-minute game completion
             )
 
             console.log('\n✨ LottoPGF demonstration complete!')
             console.log('This showcased:')
             console.log('• Multi-player lottery with 3 participants')
-            console.log('• Beneficiary registration and ticket purchasing')
-            console.log('• 10-minute game period setup (demo skipped wait for practicality)')
-            console.log('• Integration with Anyrand for verifiable randomness')
-            console.log('• Complete lottery structure with winner determination ready')
+            console.log('• Minimal cost ticket purchasing (1 wei per ticket)')
+            console.log('• 2-minute game period with real-time countdown')
+            console.log('• Verifiable random number generation via Anyrand')
+            console.log('• Winner determination and prize distribution with real randomness')
 
             if (demoResult.randomnessRequested) {
                 console.log('')

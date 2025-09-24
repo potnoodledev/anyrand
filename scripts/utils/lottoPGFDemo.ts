@@ -56,9 +56,9 @@ export async function createLotteryDemo(
     const symbol = 'DEMO'
     const pickLength = 5 // Pick 5 numbers
     const maxBallValue = 36 // From 1 to 36
-    // Use 2 minutes for localhost, 10 minutes for deployed networks (old contract version)
-    const gamePeriod = chainId === 31337n ? 120 : 600 // 2 minutes localhost, 10 minutes testnet
-    const ticketPrice = parseEther('0.01') // 0.01 ETH per ticket
+    // Use 2 minutes for all networks with updated contract
+    const gamePeriod = 120 // 2 minutes for all networks
+    const ticketPrice = 1n // 1 wei per ticket (minimal cost for testing)
     const communityFeeBps = 5000 // 50% to community
     // Use the correct WETH address as prize token
     const prizeToken = wethAddress
@@ -69,8 +69,8 @@ export async function createLotteryDemo(
     console.log('Lottery Configuration:')
     console.log('- Name:', name)
     console.log('- Pick 5 numbers from 1-36')
-    console.log('- Ticket Price:', formatEther(ticketPrice), 'ETH')
-    console.log('- Game Period:', gamePeriod / 60, `minutes (${chainId === 31337n ? 'updated contract' : 'legacy contract minimum'})`)
+    console.log('- Ticket Price:', formatEther(ticketPrice), 'ETH (1 wei - minimal cost)')
+    console.log('- Game Period:', gamePeriod / 60, 'minutes (updated contract minimum)')
     console.log('- Community Fee:', communityFeeBps / 100, '%')
 
     const createTx = await factory.create(
@@ -193,7 +193,7 @@ export async function createLotteryDemo(
         const finalNumbers = uniqueNumbers.slice(0, 5).sort((a, b) => a - b)
 
         console.log('Ticket numbers:', finalNumbers.join(', '))
-        console.log('Ticket cost:', formatEther(ticketPrice), 'ETH')
+        console.log('Ticket cost:', formatEther(ticketPrice), 'ETH (1 wei)')
 
         // Create the ticket struct as expected by the contract
         const tickets = [{
