@@ -3,7 +3,7 @@ pragma solidity 0.8.27;
 
 import {hevm} from "../IHevm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {ILootery, Lootery} from "../../../contracts/Lootery.sol";
+import {ILootery, Lootery} from "../../Lootery.sol";
 import {MockRandomiser} from "../MockRandomiser.sol";
 import {MockERC20} from "../MockERC20.sol";
 import {TicketSVGRenderer} from "../../periphery/TicketSVGRenderer.sol";

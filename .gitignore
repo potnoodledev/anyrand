@@ -16,7 +16,7 @@ artifacts
 !ignition/**/*
 
 # Don't commit local deployments
-ignition/deployments/chain-31337-*
+ignition/deployments/chain-31337*
 
 # Noir
 circuits/proofs/

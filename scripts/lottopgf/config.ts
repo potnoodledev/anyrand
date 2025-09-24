@@ -8,6 +8,13 @@ export interface Config {
 }
 
 export const config: Config = {
+    '31337': {
+        /** localhost hardhat */
+        anyrand: '0x0000000000000000000000000000000000000000', // Will be replaced dynamically
+        weth: '0x0000000000000000000000000000000000000000', // No WETH needed for local
+        owner: undefined,
+        feeRecipient: undefined,
+    },
     '534351': {
         /** scroll sepolia */
         anyrand: '0x86d8C50E04DDd04cdaafaC9672cf1D00b6057AF5',
@@ -29,4 +36,24 @@ export const config: Config = {
         owner: '0xF9FCDf64160087Ac1610bB1366750D55043ef206',
         feeRecipient: '0xF9FCDf64160087Ac1610bB1366750D55043ef206',
     },
+}
+
+/**
+ * Get dynamic configuration with the ability to override Anyrand address
+ * @param chainId The chain ID
+ * @param anyrandAddress Optional Anyrand address to use instead of the default
+ * @returns Configuration for the chain with optional overrides
+ */
+export function getDynamicConfig(
+    chainId: string,
+    anyrandAddress?: `0x${string}`
+): Config[string] {
+    const base = config[chainId]
+    if (!base) {
+        throw new Error(`No configuration found for chain ${chainId}`)
+    }
+    return {
+        ...base,
+        anyrand: anyrandAddress || base.anyrand,
+    }
 }

@@ -12,14 +12,28 @@ dotenv.config()
 
 const config: HardhatUserConfig = {
     solidity: {
-        version: '0.8.28',
-        settings: {
-            viaIR: false,
-            optimizer: {
-                enabled: true,
-                runs: 1000,
+        compilers: [
+            {
+                version: '0.8.28',
+                settings: {
+                    viaIR: false,
+                    optimizer: {
+                        enabled: true,
+                        runs: 1000,
+                    },
+                },
             },
-        },
+            {
+                version: '0.8.27',
+                settings: {
+                    viaIR: false,
+                    optimizer: {
+                        enabled: true,
+                        runs: 1000,
+                    },
+                },
+            },
+        ],
     },
     networks: {
         hardhat: {
@@ -53,9 +67,9 @@ const config: HardhatUserConfig = {
         path: './exported/abi',
         runOnCompile: true,
         clear: true,
-        flat: true,
+        flat: false, // Use directory structure to avoid conflicts
         only: ['Anyrand'],
-        except: ['test/*'],
+        except: ['test/*', 'contracts/lottopgf/interfaces/*'], // Exclude LottoPGF interfaces
     },
 }
 

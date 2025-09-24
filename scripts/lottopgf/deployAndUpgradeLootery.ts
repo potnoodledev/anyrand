@@ -1,6 +1,6 @@
 import { ethers, ignition, run } from 'hardhat'
-import { LooteryFactory__factory } from '../typechain-types'
-import LooteryImplV1_8_0 from '../ignition/modules/LooteryImplV1_8_0'
+import { LooteryFactory__factory } from '../../typechain-types'
+import LooteryImplV1_8_0 from '../../ignition/modules/LooteryImplV1_8_0'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import yesno from 'yesno'
@@ -11,7 +11,7 @@ import yesno from 'yesno'
 async function main() {
     const chainId = await ethers.provider.getNetwork().then((network) => network.chainId)
     const deployedAddressesJson = await fs.readFile(
-        path.resolve(__dirname, `../ignition/deployments/chain-${chainId}/deployed_addresses.json`),
+        path.resolve(__dirname, `../../ignition/deployments/chain-${chainId}/deployed_addresses.json`),
         {
             encoding: 'utf-8',
         },

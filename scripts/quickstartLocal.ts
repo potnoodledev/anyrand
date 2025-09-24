@@ -7,6 +7,8 @@ import {
 import { formatEther, formatUnits, getBytes, keccak256, parseEther } from 'ethers'
 import { bn254 } from '@kevincharm/noble-bn254-drand'
 import * as dotenv from 'dotenv'
+import { deployLottoPGF } from './lottopgf/deployLottoPGF'
+import { saveLottoPGFAddresses, readLottoPGFAddresses } from './utils/envHandler'
 
 /**
  * Complete Anyrand Quickstart for Local Development
@@ -93,9 +95,42 @@ async function main() {
     console.log('')
 
     // ========================================================================
-    // STEP 2: DEPLOY CONSUMER CONTRACT
+    // STEP 2: DEPLOY LOTTOPGF CONTRACTS
     // ========================================================================
-    console.log('STEP 2: Deploy Consumer Contract')
+    console.log('STEP 2: Deploy LottoPGF Contracts')
+    console.log('-------------------------------------\n')
+
+    // Check if LottoPGF is already deployed
+    const existingLottoPGF = readLottoPGFAddresses('localhost')
+    let lottoPGFDeployment
+
+    if (existingLottoPGF && existingLottoPGF.looteryFactory) {
+        console.log('LottoPGF contracts already deployed:')
+        console.log('- Factory:', existingLottoPGF.looteryFactory)
+        console.log('- Implementation:', existingLottoPGF.looteryImpl)
+        console.log('- SVG Renderer:', existingLottoPGF.ticketSVGRenderer)
+        console.log('- ETH Adapter:', existingLottoPGF.looteryETHAdapter)
+        console.log('✅ Using existing LottoPGF deployment\n')
+
+        lottoPGFDeployment = existingLottoPGF
+    } else {
+        console.log('Deploying LottoPGF contracts with Anyrand integration...')
+        try {
+            lottoPGFDeployment = await deployLottoPGF(ANYRAND_ADDRESS as `0x${string}`, 'localhost')
+            saveLottoPGFAddresses(lottoPGFDeployment, 'localhost')
+            console.log('✅ LottoPGF deployment completed and saved to .env\n')
+        } catch (error) {
+            console.error('❌ Failed to deploy LottoPGF contracts')
+            console.error('Error:', error instanceof Error ? error.message : error)
+            console.error('Continuing without LottoPGF...\n')
+            lottoPGFDeployment = null
+        }
+    }
+
+    // ========================================================================
+    // STEP 3: DEPLOY CONSUMER CONTRACT
+    // ========================================================================
+    console.log('STEP 3: Deploy Consumer Contract')
     console.log('-------------------------------------\n')
 
     console.log('Deploying AnyrandConsumer...')
@@ -122,9 +157,9 @@ async function main() {
     console.log('✅ Consumer contract verified\n')
 
     // ========================================================================
-    // STEP 3: REQUEST RANDOMNESS
+    // STEP 4: REQUEST RANDOMNESS
     // ========================================================================
-    console.log('STEP 3: Request Randomness')
+    console.log('STEP 4: Request Randomness')
     console.log('-------------------------------------\n')
 
     // Connect to contracts
@@ -182,9 +217,9 @@ async function main() {
     console.log('')
 
     // ========================================================================
-    // STEP 4: GENERATE BEACON SIGNATURE (SKIP WAIT FOR LOCAL TESTING)
+    // STEP 5: GENERATE BEACON SIGNATURE (SKIP WAIT FOR LOCAL TESTING)
     // ========================================================================
-    console.log('STEP 4: Generate Beacon Signature')
+    console.log('STEP 5: Generate Beacon Signature')
     console.log('-------------------------------------\n')
 
     console.log('Generating test signature for local environment...')
@@ -196,9 +231,9 @@ async function main() {
     console.log('')
 
     // ========================================================================
-    // STEP 5: FULFILL RANDOMNESS REQUEST
+    // STEP 6: FULFILL RANDOMNESS REQUEST
     // ========================================================================
-    console.log('STEP 5: Fulfill Randomness Request')
+    console.log('STEP 6: Fulfill Randomness Request')
     console.log('-------------------------------------\n')
 
     const anyrandFulfiller = anyrand.connect(fulfiller)
@@ -317,6 +352,12 @@ async function main() {
     console.log('- Anyrand:', ANYRAND_ADDRESS)
     console.log('- Consumer:', consumerAddress)
     console.log('- Beacon:', BEACON_ADDRESS)
+
+    if (lottoPGFDeployment) {
+        console.log('- LottoPGF Factory:', lottoPGFDeployment.looteryFactory)
+        console.log('- LottoPGF ETH Adapter:', lottoPGFDeployment.looteryETHAdapter)
+        console.log('- LottoPGF SVG Renderer:', lottoPGFDeployment.ticketSVGRenderer)
+    }
     console.log('')
 
     if (callbackSuccess) {

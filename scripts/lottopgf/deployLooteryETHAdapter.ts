@@ -1,6 +1,6 @@
 import { ethers, ignition, run } from 'hardhat'
 import { config } from './config'
-import LooteryETHAdapterModule from '../ignition/modules/LooteryETHAdapterV1_5_0'
+import LooteryETHAdapterModule from '../../ignition/modules/LooteryETHAdapterV1_5_0'
 
 async function main() {
     const chainId = await ethers.provider.getNetwork().then((network) => network.chainId)
