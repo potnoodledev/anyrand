@@ -159,7 +159,7 @@ contract Lootery is
         }
         maxBallValue = initConfig.maxBallValue;
 
-        if (initConfig.gamePeriod < 10 minutes) {
+        if (initConfig.gamePeriod < 2 minutes) {
             revert InvalidGamePeriod(initConfig.gamePeriod);
         }
         gamePeriod = initConfig.gamePeriod;

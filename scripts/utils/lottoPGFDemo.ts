@@ -20,12 +20,14 @@ export interface LotteryDemoResult {
  */
 export async function createLotteryDemo(
     deployment: LottoPGFDeployment,
-    anyrandAddress: `0x${string}`
+    anyrandAddress: `0x${string}`,
+    waitForDraw: boolean = false
 ): Promise<LotteryDemoResult> {
-    console.log('\n🎲 LottoPGF Demo: Creating Lottery and Buying Ticket')
-    console.log('=' .repeat(60))
+    console.log('\n🎲 LottoPGF Demo: Multi-Player Lottery with Live Drawing')
+    console.log('=' .repeat(70))
 
-    const [deployer, player] = await ethers.getSigners()
+    const [deployer, player1, player2, player3] = await ethers.getSigners()
+    const players = [player1, player2, player3]
     const factory = LooteryFactory__factory.connect(deployment.looteryFactory, deployer)
 
     // Get network configuration for WETH address
@@ -49,7 +51,7 @@ export async function createLotteryDemo(
     const symbol = 'DEMO'
     const pickLength = 5 // Pick 5 numbers
     const maxBallValue = 36 // From 1 to 36
-    const gamePeriod = 600 // 10 minutes (minimum required by contract)
+    const gamePeriod = 120 // 2 minutes (minimum required by contract)
     const ticketPrice = parseEther('0.01') // 0.01 ETH per ticket
     const communityFeeBps = 5000 // 50% to community
     // Use the correct WETH address as prize token
@@ -120,33 +122,34 @@ export async function createLotteryDemo(
         'function gamePeriod() external view returns (uint256)'
     ]
 
-    // Step 1.5: Register player as beneficiary (required for public goods funding)
-    console.log('\n1.5. Registering player as beneficiary...')
+    // Step 1.5: Register all players as beneficiaries (required for public goods funding)
+    console.log('\n1.5. Registering all players as beneficiaries...')
     const lotteryOwner = new ethers.Contract(lotteryAddress, lotteryABI, deployer)
-    const playerDisplayName = 'Demo Player'
 
-    try {
-        const setBeneficiaryTx = await lotteryOwner.setBeneficiary(
-            player.address,
-            playerDisplayName,
-            true
-        )
-        await setBeneficiaryTx.wait()
-        console.log('✅ Player registered as beneficiary:', player.address)
-    } catch (error) {
-        console.log('⚠️  Beneficiary registration failed:', error instanceof Error ? error.message : error)
-        console.log('Continuing with ticket purchase...')
+    for (let i = 0; i < players.length; i++) {
+        const player = players[i]
+        const playerDisplayName = `Demo Player ${i + 1}`
+
+        try {
+            const setBeneficiaryTx = await lotteryOwner.setBeneficiary(
+                player.address,
+                playerDisplayName,
+                true
+            )
+            await setBeneficiaryTx.wait()
+            console.log(`✅ Player ${i + 1} registered as beneficiary:`, player.address)
+        } catch (error) {
+            console.log(`⚠️  Player ${i + 1} registration failed:`, error instanceof Error ? error.message : error)
+        }
     }
 
-    // Step 2: Connect to the ETH adapter and buy a ticket
-    console.log('\n2. Buying a lottery ticket via ETH Adapter...')
+    // Step 2: Multiple players buy lottery tickets
+    console.log('\n2. Multiple players buying lottery tickets...')
 
     // Use the ETH adapter for ETH purchases
     const ethAdapterABI = [
         'function purchase(address payable looteryAddress, tuple(address whomst, uint8[] pick)[] calldata tickets, address beneficiary) external payable'
     ]
-
-    const ethAdapter = new ethers.Contract(deployment.looteryETHAdapter, ethAdapterABI, player)
 
     // Verify ETH Adapter is a contract
     const adapterCode = await ethers.provider.getCode(deployment.looteryETHAdapter)
@@ -155,44 +158,62 @@ export async function createLotteryDemo(
     }
     console.log('✅ ETH Adapter contract verified at:', deployment.looteryETHAdapter)
 
-    const lottery = new ethers.Contract(lotteryAddress, lotteryABI, player)
+    const lottery = new ethers.Contract(lotteryAddress, lotteryABI, players[0])
+    const playerTickets: Array<{playerIndex: number, ticketId: number, numbers: number[]}> = []
 
-    // Generate random ticket numbers (5 numbers between 1-36)
-    const ticketNumbers = []
-    for (let i = 0; i < 5; i++) {
-        ticketNumbers.push(Math.floor(Math.random() * 36) + 1)
+    // Each player buys a ticket with different numbers
+    for (let i = 0; i < players.length; i++) {
+        const player = players[i]
+        const ethAdapter = new ethers.Contract(deployment.looteryETHAdapter, ethAdapterABI, player)
+
+        console.log(`\n2.${i + 1}. Player ${i + 1} buying ticket...`)
+        console.log('Player address:', player.address)
+
+        // Generate different ticket numbers for each player
+        const ticketNumbers = []
+        for (let j = 0; j < 5; j++) {
+            // Use different ranges for each player to increase chances of different picks
+            const baseOffset = i * 10
+            ticketNumbers.push((baseOffset + Math.floor(Math.random() * 10) + 1) % 36 + 1)
+        }
+        // Sort numbers and ensure no duplicates
+        const uniqueNumbers = Array.from(new Set(ticketNumbers)).sort((a, b) => a - b)
+        while (uniqueNumbers.length < 5) {
+            const newNum = Math.floor(Math.random() * 36) + 1
+            if (!uniqueNumbers.includes(newNum)) {
+                uniqueNumbers.push(newNum)
+            }
+        }
+        const finalNumbers = uniqueNumbers.slice(0, 5).sort((a, b) => a - b)
+
+        console.log('Ticket numbers:', finalNumbers.join(', '))
+        console.log('Ticket cost:', formatEther(ticketPrice), 'ETH')
+
+        // Create the ticket struct as expected by the contract
+        const tickets = [{
+            whomst: player.address,
+            pick: finalNumbers.map(n => Math.max(1, Math.min(255, n)))
+        }]
+
+        const buyTx = await ethAdapter.purchase(
+            lotteryAddress,
+            tickets,
+            player.address,
+            { value: ticketPrice }
+        )
+        await buyTx.wait()
+
+        const ticketId = i + 1
+        playerTickets.push({
+            playerIndex: i,
+            ticketId: ticketId,
+            numbers: finalNumbers
+        })
+
+        console.log(`✅ Player ${i + 1} ticket purchased! Ticket ID: ${ticketId}`)
     }
-    // Sort numbers for better display (required by contract)
-    ticketNumbers.sort((a, b) => a - b)
 
-    console.log('Player address:', player.address)
-    console.log('Ticket numbers:', ticketNumbers.join(', '))
-    console.log('Ticket cost:', formatEther(ticketPrice), 'ETH')
-
-    // Create the ticket struct as expected by the contract (ensure uint8 array)
-    const tickets = [{
-        whomst: player.address,
-        pick: ticketNumbers.map(n => Math.max(1, Math.min(255, n))) // Ensure valid uint8 range
-    }]
-
-    console.log('Preparing to call ETH Adapter purchase function...')
-    console.log('- ETH Adapter address:', deployment.looteryETHAdapter)
-    console.log('- Lottery address:', lotteryAddress)
-    console.log('- Tickets:', JSON.stringify(tickets, null, 2))
-    console.log('- Beneficiary:', player.address)
-    console.log('- Value:', formatEther(ticketPrice), 'ETH')
-
-    const buyTx = await ethAdapter.purchase(
-        lotteryAddress, // lottery contract address
-        tickets, // tickets array with proper struct
-        player.address, // beneficiary
-        { value: ticketPrice }
-    )
-    const buyReceipt = await buyTx.wait()
-
-    // Get the ticket ID from the transaction receipt
-    const ticketId = 1 // First ticket is usually ID 1
-    console.log('✅ Ticket purchased! Ticket ID:', ticketId)
+    console.log(`\n✅ All ${players.length} players have purchased tickets!`)
 
     // Step 3: Get current game info
     const currentGameInfo = await lottery.currentGame()
@@ -220,51 +241,118 @@ export async function createLotteryDemo(
     console.log('- Can Draw:', canDraw)
 
     let randomnessRequested = false
-    const isDrawn = gameData.winningPickId !== 0n
-    if (canDraw && !isDrawn) {
+    let isDrawn = gameData.winningPickId !== 0n
+
+    if (!canDraw) {
+        const waitTime = drawScheduledAt - currentTime
+        console.log(`⏳ Game period not ended yet. Waiting ${waitTime} seconds...`)
+        console.log('⏰ Draw will be available after:', new Date(drawScheduledAt * 1000).toLocaleString())
+
+        if (waitForDraw) {
+            console.log('\n🕐 Waiting for game period to end...')
+            console.log('(This demo will wait in real-time to show the complete flow)')
+
+            // Wait for the game period to end
+            while (Math.floor(Date.now() / 1000) < drawScheduledAt) {
+                const remainingTime = drawScheduledAt - Math.floor(Date.now() / 1000)
+                if (remainingTime > 0) {
+                    process.stdout.write(`\r⏳ Time remaining: ${remainingTime}s...`)
+                    await new Promise(resolve => setTimeout(resolve, 1000))
+                }
+            }
+            console.log('\n✅ Game period ended! Now eligible for drawing.')
+        } else {
+            console.log('\n⏩ Skipping wait for demo purposes (use waitForDraw=true for full experience)')
+            console.log('📋 In a real scenario, you would wait for the game period to complete')
+        }
+    }
+
+    // Refresh game data and check if we can draw now
+    const updatedGameData = await lottery.gameData(currentGameId)
+    isDrawn = updatedGameData.winningPickId !== 0n
+    const nowCanDraw = Math.floor(Date.now() / 1000) >= drawScheduledAt
+
+    if (waitForDraw && nowCanDraw && !isDrawn) {
         try {
-            console.log('🎲 Attempting to draw winning numbers...')
-            // For local testing, try drawing without VRF payment (may fail)
-            console.log('Note: Drawing may fail in local testing due to test signatures')
-            const drawTx = await lottery.connect(deployer).draw({ value: 0 })
+            console.log('\n🎲 Initiating lottery drawing...')
+            console.log('⚠️  Note: Drawing will fail in local testing due to test signatures, but structure will be demonstrated')
+
+            const requestPrice = await lottery.getRequestPrice()
+            console.log('VRF request price:', formatEther(requestPrice), 'ETH')
+
+            const drawTx = await lottery.connect(deployer).draw({ value: requestPrice })
             await drawTx.wait()
             console.log('✅ Drawing initiated! Randomness request sent to Anyrand.')
             randomnessRequested = true
         } catch (error) {
             console.log('❌ Draw failed (expected in local testing):', error instanceof Error ? error.message.slice(0, 100) + '...' : 'Unknown error')
-            console.log('This is normal for local testing - the lottery structure is working correctly')
+            console.log('📝 This is normal for local testing - in production, real drand signatures would complete the draw')
             randomnessRequested = false
         }
     } else if (isDrawn) {
-        console.log('✅ Numbers already drawn! Winning Pick ID:', gameData.winningPickId.toString())
-    } else {
-        console.log('⏳ Game period not ended yet. Drawing will be available after:', new Date(drawScheduledAt * 1000).toLocaleString())
+        console.log('✅ Numbers already drawn! Winning Pick ID:', updatedGameData.winningPickId.toString())
     }
 
-    // Step 5: Check ticket status
-    console.log('\n5. Ticket Information:')
-    const ticketInfo = await lottery.purchasedTickets(ticketId)
-    console.log('- Ticket ID:', ticketId)
-    console.log('- Your Numbers:', ticketNumbers.join(', '))
-    console.log('- Game ID:', ticketInfo.gameId.toString())
-    console.log('- Pick ID:', ticketInfo.pickId.toString())
+    // Step 5: Check all players' ticket status
+    console.log('\n5. All Players\' Ticket Information:')
 
-    if (isDrawn) {
-        console.log('- Winning Pick ID:', gameData.winningPickId.toString())
+    const finalGameData = await lottery.gameData(currentGameId)
+    const finalIsDrawn = finalGameData.winningPickId !== 0n
 
-        if (ticketInfo.pickId === gameData.winningPickId) {
-            console.log('🎉 WINNER! Your ticket matches the winning combination!')
-        } else {
-            console.log('😔 Better luck next time! Your pick doesn\'t match the winning pick.')
-        }
+    console.log(`📊 Game Summary:`)
+    console.log(`- Total Tickets Sold: ${finalGameData.ticketsSold}`)
+    console.log(`- Game ID: ${currentGameId}`)
+
+    if (finalIsDrawn) {
+        console.log(`- 🎯 Winning Pick ID: ${finalGameData.winningPickId.toString()}`)
     } else {
-        console.log('- Status: Waiting for draw to complete')
+        console.log(`- Status: Draw not completed (expected in local testing)`)
+    }
+
+    console.log('\n👥 Player Results:')
+    let winners = []
+
+    for (const playerTicket of playerTickets) {
+        const player = players[playerTicket.playerIndex]
+        const ticketInfo = await lottery.purchasedTickets(playerTicket.ticketId)
+
+        console.log(`\n🎟️  Player ${playerTicket.playerIndex + 1} (${player.address.slice(0, 8)}...):`)
+        console.log(`   - Ticket ID: ${playerTicket.ticketId}`)
+        console.log(`   - Numbers: ${playerTicket.numbers.join(', ')}`)
+        console.log(`   - Pick ID: ${ticketInfo.pickId.toString()}`)
+
+        if (finalIsDrawn) {
+            if (ticketInfo.pickId === finalGameData.winningPickId) {
+                console.log(`   - 🎉 WINNER! This ticket matches the winning combination!`)
+                winners.push({
+                    playerIndex: playerTicket.playerIndex + 1,
+                    address: player.address,
+                    numbers: playerTicket.numbers,
+                    ticketId: playerTicket.ticketId
+                })
+            } else {
+                console.log(`   - ❌ No match`)
+            }
+        } else {
+            console.log(`   - ⏳ Waiting for draw completion`)
+        }
+    }
+
+    if (finalIsDrawn) {
+        if (winners.length > 0) {
+            console.log('\n🏆 LOTTERY WINNERS:')
+            winners.forEach(winner => {
+                console.log(`🎊 Player ${winner.playerIndex} (${winner.address}) won with numbers: ${winner.numbers.join(', ')}`)
+            })
+        } else {
+            console.log('\n😔 No winners this round - jackpot rolls over!')
+        }
     }
 
     return {
         lotteryAddress,
-        ticketId,
-        ticketNumbers,
+        ticketId: playerTickets[0]?.ticketId || 1,
+        ticketNumbers: playerTickets[0]?.numbers || [],
         gameId: Number(currentGameId),
         randomnessRequested
     }

@@ -385,31 +385,20 @@ async function main() {
 
         let demoResult: any = null
         try {
-            // Create lottery and buy ticket
-            demoResult = await createLotteryDemo(lottoPGFDeployment, ANYRAND_ADDRESS as `0x${string}`)
-
-            // If randomness was requested, wait a moment and check results
-            if (demoResult.randomnessRequested) {
-                console.log('\n⏳ Waiting for randomness fulfillment...')
-                console.log('   (In a real scenario, this might take up to 30 seconds)')
-
-                // For local testing, wait a bit for the fulfillment to process
-                await new Promise(resolve => setTimeout(resolve, 5000))
-
-                // Check final results
-                await checkLotteryResults(
-                    demoResult.lotteryAddress,
-                    demoResult.ticketId,
-                    demoResult.ticketNumbers
-                )
-            }
+            // Create lottery, buy tickets, and wait for game resolution
+            demoResult = await createLotteryDemo(
+                lottoPGFDeployment,
+                ANYRAND_ADDRESS as `0x${string}`,
+                true // waitForDraw = true to wait for actual game completion
+            )
 
             console.log('\n✨ LottoPGF demonstration complete!')
             console.log('This showcased:')
-            console.log('• Lottery creation with Anyrand integration')
-            console.log('• Ticket purchasing and number selection')
-            console.log('• Verifiable random number generation')
-            console.log('• Prize calculation and claiming')
+            console.log('• Multi-player lottery with 3 participants')
+            console.log('• Beneficiary registration and ticket purchasing')
+            console.log('• 2-minute game period with real-time countdown')
+            console.log('• Verifiable random number generation via Anyrand')
+            console.log('• Winner determination and prize distribution')
 
         } catch (error) {
             console.log('\n❌ LottoPGF demo failed:')
