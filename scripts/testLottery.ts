@@ -12,6 +12,103 @@ interface LotteryInfo {
     drawTime: string
 }
 
+async function buyTickets(lotteryAddress: string, ticketCount: number, signer: any): Promise<void> {
+    // Get ETH Adapter address
+    const ADAPTER_ADDRESS = process.env.LOTTOPGF_ADAPTER_SCROLLSEPOLIA_ADDRESS
+    if (!ADAPTER_ADDRESS) {
+        throw new Error('LOTTOPGF_ADAPTER_SCROLLSEPOLIA_ADDRESS environment variable is required')
+    }
+
+    const lotteryABI = [
+        'function ticketPrice() external view returns (uint256)',
+        'function currentGame() external view returns (tuple(uint8 state, uint248 id))',
+        'function gameData(uint256 gameId) external view returns (tuple(uint64 ticketsSold, uint64 startedAt, uint256 winningPickId))',
+        'function pickLength() external view returns (uint8)',
+        'function maxBallValue() external view returns (uint8)'
+    ]
+
+    const adapterABI = [
+        'function purchase(address payable looteryAddress, tuple(address whomst, uint8[] pick)[] tickets, address beneficiary) external payable'
+    ]
+
+    const lottery = new ethers.Contract(lotteryAddress, lotteryABI, signer)
+    const adapter = new ethers.Contract(ADAPTER_ADDRESS, adapterABI, signer)
+
+    // Get lottery parameters
+    const ticketPrice = await lottery.ticketPrice()
+    const pickLength = Number(await lottery.pickLength())
+    const maxBallValue = Number(await lottery.maxBallValue())
+    const totalCost = ticketPrice * BigInt(ticketCount)
+
+    console.log(`- Ticket price: ${ethers.formatEther(ticketPrice)} ETH each`)
+    console.log(`- Total cost: ${ethers.formatEther(totalCost)} ETH for ${ticketCount} tickets`)
+    console.log(`- Pick length: ${pickLength}, Max ball value: ${maxBallValue}`)
+
+    // Check balance
+    const balance = await signer.provider.getBalance(signer.address)
+    if (balance < totalCost) {
+        throw new Error(`Insufficient balance. Need: ${ethers.formatEther(totalCost)} ETH, Have: ${ethers.formatEther(balance)} ETH`)
+    }
+
+    // Check current state
+    const currentGame = await lottery.currentGame()
+    if (currentGame.state !== 1n) { // 1 = Purchase state
+        throw new Error('Lottery is not in Purchase state')
+    }
+
+    // Get current ticket count
+    const gameData = await lottery.gameData(currentGame.id)
+    const currentTickets = gameData.ticketsSold
+
+    console.log(`- Current tickets sold: ${currentTickets.toString()}`)
+
+    // Generate random tickets (simple approach)
+    const tickets = []
+    for (let i = 0; i < ticketCount; i++) {
+        // Generate random picks (ascending order, no duplicates)
+        const pick = []
+        const used = new Set()
+
+        while (pick.length < pickLength) {
+            const num = Math.floor(Math.random() * maxBallValue) + 1
+            if (!used.has(num)) {
+                pick.push(num)
+                used.add(num)
+            }
+        }
+        pick.sort((a, b) => a - b)
+
+        tickets.push({
+            whomst: signer.address,
+            pick: pick
+        })
+    }
+
+    console.log('Generated tickets:', tickets.map((t, i) => `${i + 1}: [${t.pick.join(', ')}]`).join(', '))
+
+    // Purchase tickets using ETH adapter
+    const tx = await adapter.purchase(
+        lotteryAddress,
+        tickets,
+        ethers.ZeroAddress, // no specific beneficiary
+        {
+            value: totalCost,
+            gasLimit: 1000000
+        }
+    )
+
+    console.log(`⏳ Transaction submitted: ${tx.hash}`)
+    const receipt = await tx.wait()
+    console.log('✅ Tickets purchased successfully!')
+
+    // Check new ticket count
+    const newGameData = await lottery.gameData(currentGame.id)
+    const newTickets = newGameData.ticketsSold
+
+    console.log(`- New total tickets: ${newTickets.toString()}`)
+    console.log(`- You purchased: ${newTickets - currentTickets} tickets`)
+}
+
 async function selectLottery(): Promise<string> {
     const [deployer] = await ethers.getSigners()
 
@@ -157,18 +254,43 @@ async function selectLottery(): Promise<string> {
         })
 
         return new Promise((resolve) => {
-            rl.question(`Enter the number of the lottery to test (1-${lotteries.length}): `, (answer) => {
-                rl.close()
-
+            rl.question(`Enter the number of the lottery to test (1-${lotteries.length}): `, async (answer) => {
                 const selection = parseInt(answer)
                 if (isNaN(selection) || selection < 1 || selection > lotteries.length) {
                     console.error('❌ Invalid selection')
+                    rl.close()
                     process.exit(1)
                 }
 
                 const selectedLottery = lotteries[selection - 1]
                 console.log(`\n✅ Selected: ${selectedLottery.name} (${selectedLottery.address})`)
-                resolve(selectedLottery.address)
+
+                // If lottery is in Purchase state, offer to buy tickets
+                if (selectedLottery.state === 'Purchase') {
+                    rl.question('\n🎫 Would you like to buy tickets first? (y/N): ', async (buyAnswer) => {
+                        if (buyAnswer.toLowerCase().startsWith('y')) {
+                            rl.question('How many tickets to buy? (default: 1): ', async (ticketAnswer) => {
+                                const ticketCount = parseInt(ticketAnswer) || 1
+                                console.log(`\n🛒 Buying ${ticketCount} tickets...`)
+
+                                try {
+                                    await buyTickets(selectedLottery.address, ticketCount, deployer)
+                                } catch (error: any) {
+                                    console.log('❌ Failed to buy tickets:', error.message)
+                                }
+
+                                rl.close()
+                                resolve(selectedLottery.address)
+                            })
+                        } else {
+                            rl.close()
+                            resolve(selectedLottery.address)
+                        }
+                    })
+                } else {
+                    rl.close()
+                    resolve(selectedLottery.address)
+                }
             })
         })
 
