@@ -1,14 +1,190 @@
 import { ethers } from 'hardhat'
 import { getDrandBeaconRound, decodeG1 } from '../lib/drand'
+import { LooteryFactory__factory } from '../typechain-types'
+import * as readline from 'readline'
+
+interface LotteryInfo {
+    address: string
+    name: string
+    state: string
+    ticketsSold: string
+    jackpot: string
+    drawTime: string
+}
+
+async function selectLottery(): Promise<string> {
+    const [deployer] = await ethers.getSigners()
+
+    // Get factory address
+    const FACTORY_ADDRESS = process.env.LOTTOPGF_FACTORY_SCROLLSEPOLIA_ADDRESS
+    if (!FACTORY_ADDRESS) {
+        console.error('❌ LOTTOPGF_FACTORY_SCROLLSEPOLIA_ADDRESS environment variable is required')
+        process.exit(1)
+    }
+
+    console.log('🔍 Fetching available lotteries from factory:', FACTORY_ADDRESS)
+    console.log('='.repeat(70))
+
+    const factory = LooteryFactory__factory.connect(FACTORY_ADDRESS, deployer)
+
+    try {
+        // Get all lottery addresses from factory using LooteryLaunched event
+        console.log('📡 Searching for deployed lotteries...')
+        const filter = factory.filters.LooteryLaunched()
+
+        // Try different block ranges to avoid "Block range too large" error
+        let events: any[] = []
+        const currentBlock = await deployer.provider!.getBlockNumber()
+
+        // Try smaller ranges first
+        const blockRanges = [5000, 10000, 25000]
+
+        for (const range of blockRanges) {
+            try {
+                const fromBlock = Math.max(0, currentBlock - range)
+                console.log(`Searching from block ${fromBlock} to ${currentBlock} (${currentBlock - fromBlock} blocks)`)
+                events = await factory.queryFilter(filter, fromBlock, 'latest')
+                break // Success, exit the loop
+            } catch (error: any) {
+                console.log(`❌ Failed with range ${range}: ${error.message}`)
+                continue
+            }
+        }
+
+        // If still no events and we haven't tried all ranges, show known lotteries
+        if (events.length === 0) {
+            console.log('\n⚠️ Could not fetch lottery events from factory')
+            console.log('You can manually specify a lottery address as an argument:')
+            console.log('Known lottery addresses:')
+            console.log('- 0x6F0f10f47989e87943deF43C6c7B9084F7506dB8 (Recent test lottery)')
+            console.log('- 0x56c70Ca00E32b6dA26D28C23eAc4b3C6CeA1a00E (Previous test lottery)')
+
+            // Ask user to enter address manually
+            const rl = readline.createInterface({
+                input: process.stdin,
+                output: process.stdout
+            })
+
+            return new Promise((resolve) => {
+                rl.question('\nEnter lottery address manually (or press Enter to exit): ', (answer) => {
+                    rl.close()
+                    if (!answer.trim()) {
+                        console.log('❌ No lottery address provided')
+                        process.exit(1)
+                    }
+                    console.log(`\n✅ Using manually entered address: ${answer}`)
+                    resolve(answer.trim())
+                })
+            })
+        }
+
+        if (events.length === 0) {
+            console.log('❌ No lotteries found in factory')
+            console.log('Please deploy a lottery first using: yarn create-lottery')
+            process.exit(1)
+        }
+
+        console.log(`✅ Found ${events.length} deployed lotteries\n`)
+
+        // Get lottery details
+        const lotteries: LotteryInfo[] = []
+        const lotteryABI = [
+            'function name() external view returns (string)',
+            'function currentGame() external view returns (tuple(uint8 state, uint248 id))',
+            'function gameData(uint256 gameId) external view returns (tuple(uint64 ticketsSold, uint64 startedAt, uint256 winningPickId))',
+            'function jackpot() external view returns (uint256)',
+            'function gamePeriod() external view returns (uint256)'
+        ]
+
+        for (let i = 0; i < events.length; i++) {
+            const event = events[i]
+            // LooteryLaunched event: (address indexed looteryProxy, address indexed looteryImplementation, address indexed deployer, string name)
+            const lotteryAddress = event.args[0] // looteryProxy
+
+            try {
+                const lottery = new ethers.Contract(lotteryAddress, lotteryABI, deployer)
+                const name = await lottery.name()
+                const currentGame = await lottery.currentGame()
+                const gameData = await lottery.gameData(currentGame.id)
+                const jackpot = await lottery.jackpot()
+                const gamePeriod = await lottery.gamePeriod()
+
+                const stateNames = ['Nonexistent', 'Purchase', 'DrawPending', 'Dead']
+                const state = stateNames[currentGame.state] || 'Unknown'
+
+                const gameStartedAt = Number(gameData.startedAt)
+                const drawScheduledAt = gameStartedAt + Number(gamePeriod)
+                const drawTime = gameStartedAt > 0 ? new Date(drawScheduledAt * 1000).toLocaleString() : 'Not started'
+
+                lotteries.push({
+                    address: lotteryAddress,
+                    name: name || `Lottery ${i + 1}`,
+                    state,
+                    ticketsSold: gameData.ticketsSold.toString(),
+                    jackpot: ethers.formatEther(jackpot),
+                    drawTime
+                })
+            } catch (error) {
+                console.log(`⚠️ Could not fetch details for lottery ${lotteryAddress}`)
+                lotteries.push({
+                    address: lotteryAddress,
+                    name: `Lottery ${i + 1} (Details unavailable)`,
+                    state: 'Unknown',
+                    ticketsSold: '?',
+                    jackpot: '?',
+                    drawTime: '?'
+                })
+            }
+        }
+
+        // Display lotteries
+        console.log('Available Lotteries:')
+        console.log('='.repeat(70))
+        lotteries.forEach((lottery, index) => {
+            console.log(`${index + 1}. ${lottery.name}`)
+            console.log(`   Address: ${lottery.address}`)
+            console.log(`   State: ${lottery.state}`)
+            console.log(`   Tickets Sold: ${lottery.ticketsSold}`)
+            console.log(`   Jackpot: ${lottery.jackpot} ETH`)
+            console.log(`   Next Draw: ${lottery.drawTime}`)
+            console.log()
+        })
+
+        // Get user selection
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        })
+
+        return new Promise((resolve) => {
+            rl.question(`Enter the number of the lottery to test (1-${lotteries.length}): `, (answer) => {
+                rl.close()
+
+                const selection = parseInt(answer)
+                if (isNaN(selection) || selection < 1 || selection > lotteries.length) {
+                    console.error('❌ Invalid selection')
+                    process.exit(1)
+                }
+
+                const selectedLottery = lotteries[selection - 1]
+                console.log(`\n✅ Selected: ${selectedLottery.name} (${selectedLottery.address})`)
+                resolve(selectedLottery.address)
+            })
+        })
+
+    } catch (error: any) {
+        console.error('❌ Error fetching lotteries:', error.message)
+        process.exit(1)
+    }
+}
 
 async function main() {
     // Get lottery address from command line or environment variable
-    const lotteryAddress = process.argv[2] || process.env.TEST_LOTTERY_ADDRESS
+    let lotteryAddress = process.argv[2] || process.env.TEST_LOTTERY_ADDRESS
 
     if (!lotteryAddress) {
-        console.error('❌ Usage: Set TEST_LOTTERY_ADDRESS environment variable')
-        console.error('   Example: TEST_LOTTERY_ADDRESS=0x123... yarn test-lottery')
-        process.exit(1)
+        // Interactive mode - fetch available lotteries
+        lotteryAddress = await selectLottery()
     }
 
     console.log('🧪 Testing Lottery:', lotteryAddress)
