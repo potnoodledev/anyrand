@@ -655,24 +655,116 @@ async function fulfillPendingDraw(lottery: any, lotteryAddress: string, deployer
 
             // Search for recent RandomnessRequested events from this lottery
             console.log('🔍 Searching for recent RandomnessRequested events from this lottery...')
-            const filter = anyrand.filters.RandomnessRequested(null, null, lotteryAddress)
+            console.log('- Lottery address (requester):', lotteryAddress)
+            console.log('- Anyrand address:', ANYRAND_ADDRESS)
+
+            // FIXED: Correct filter order - RandomnessRequested(requestId, round, requester, pubKeyHash, callbackGasLimit)
+            // Parameters: requestId(indexed), round(NOT indexed), requester(indexed), pubKeyHash(indexed), callbackGasLimit(NOT indexed)
+            // Non-indexed parameters MUST be null in filter
+            const filter = anyrand.filters.RandomnessRequested(
+                null,           // requestId (indexed) - any value
+                null,           // round (NOT indexed) - must be null
+                lotteryAddress, // requester (indexed) - specific lottery
+                null,           // pubKeyHash (indexed) - any value
+                null            // callbackGasLimit (NOT indexed) - must be null
+            )
             const currentBlock = await deployer.provider!.getBlockNumber()
 
-            // Search last 5000 blocks - should cover several hours of activity
-            const events = await anyrand.queryFilter(filter, currentBlock - 5000, 'latest')
+            console.log(`- Searching from block ${currentBlock - 10000} to ${currentBlock} (10000 blocks)`)
+
+            // Expand search to last 10000 blocks for better coverage
+            let events
+            try {
+                events = await anyrand.queryFilter(filter, currentBlock - 10000, 'latest')
+                console.log(`- Found ${events.length} RandomnessRequested events for this lottery`)
+            } catch (filterError) {
+                console.log('⚠️ Ethers filter failed:', filterError instanceof Error ? filterError.message : filterError)
+                events = []
+            }
 
             if (events.length === 0) {
-                console.log('⚠️ No RandomnessRequested events found in last 5000 blocks')
-                console.log('🔍 Checking lottery state to determine next action...')
+                // Try direct RPC call as fallback
+                console.log('🔍 Trying direct RPC call as fallback...')
+                let foundViaRPC = false
 
-                // Check the current lottery state
-                const currentGame = await lottery.currentGame()
-                const gameData = await lottery.gameData(currentGame.id)
+                try {
+                    const provider = deployer.provider!
+                    const eventSignature = '0x4d742ad77e9e8ee172d944c464321fc0e5c49465017bf65357c77b62de3a1b58'
+                    const paddedLotteryAddress = ethers.zeroPadValue(lotteryAddress, 32)
 
-                console.log(`- Current game state: ${['Nonexistent', 'Purchase', 'DrawPending', 'Dead'][currentGame.state]}`)
-                console.log(`- Tickets sold: ${gameData.ticketsSold}`)
+                    console.log('- Event signature:', eventSignature)
+                    console.log('- Padded lottery address:', paddedLotteryAddress)
 
-                if (currentGame.state === 2n) { // DrawPending - stuck state, needs forceRedraw
+                    const logs = await provider.send('eth_getLogs', [{
+                        address: ANYRAND_ADDRESS,
+                        fromBlock: ethers.toBeHex(currentBlock - 5000),
+                        toBlock: 'latest',
+                        topics: [
+                            eventSignature,  // RandomnessRequested event signature
+                            null,           // requestId (any)
+                            paddedLotteryAddress, // requester (specific lottery)
+                            null            // pubKeyHash (any)
+                        ]
+                    }])
+
+                    console.log(`- Direct RPC found ${logs.length} events`)
+
+                    if (logs.length > 0) {
+                        console.log('✅ Direct RPC call found events! Issue was with ethers filter.')
+                        // Parse the first event manually
+                        const log = logs[0]
+                        requestId = BigInt(log.topics[1])
+                        pubKeyHash = log.topics[3]
+
+                        // Decode the data field
+                        const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
+                            ['uint256', 'uint256', 'uint256', 'uint256'],
+                            log.data
+                        )
+                        round = decoded[0]
+
+                        // Use lottery's callback gas limit
+                        callbackGasLimit = Number(await lottery.callbackGasLimit())
+
+                        console.log('📋 Found pending VRF request via direct RPC:')
+                        console.log('- Request ID:', requestId.toString())
+                        console.log('- Round:', round.toString())
+                        console.log('- Pub Key Hash:', pubKeyHash)
+                        console.log('- Callback Gas Limit:', callbackGasLimit)
+
+                        foundViaRPC = true
+                    } else {
+                        console.log('❌ Even direct RPC call found no events')
+                    }
+                } catch (rpcError) {
+                    console.log('❌ Direct RPC call also failed:', rpcError instanceof Error ? rpcError.message : rpcError)
+                }
+
+                if (foundViaRPC) {
+                    console.log('✅ Proceeding directly to fulfillment with found request...')
+                    // Continue to the next section for fulfillment
+                } else {
+                    console.log('🔍 No events found with any method, checking for any RandomnessRequested events...')
+                    try {
+                        const broadEvents = await anyrand.queryFilter(anyrand.filters.RandomnessRequested(), currentBlock - 5000, 'latest')
+                        console.log(`- Found ${broadEvents.length} total RandomnessRequested events in last 5000 blocks`)
+                    } catch (broadError) {
+                        console.log('❌ Even broad search failed:', broadError instanceof Error ? broadError.message : broadError)
+                    }
+
+                    console.log('⚠️ No RandomnessRequested events found')
+                    console.log('🔍 Checking lottery state to determine next action...')
+                }
+
+                if (!foundViaRPC) {
+                    // Check the current lottery state only if we didn't find a request
+                    const currentGame = await lottery.currentGame()
+                    const gameData = await lottery.gameData(currentGame.id)
+
+                    console.log(`- Current game state: ${['Nonexistent', 'Purchase', 'DrawPending', 'Dead'][currentGame.state]}`)
+                    console.log(`- Tickets sold: ${gameData.ticketsSold}`)
+
+                    if (currentGame.state === 2n) { // DrawPending - stuck state, needs forceRedraw
                     console.log('🔄 Lottery is in DrawPending state - this indicates a stuck/failed draw')
                     console.log('Will attempt to use forceRedraw() to reset and create a new draw...')
 
@@ -895,8 +987,9 @@ async function fulfillPendingDraw(lottery: any, lotteryAddress: string, deployer
                         throw new Error('Cannot create VRF request through regular draw')
                     }
 
-                } else {
-                    throw new Error(`Lottery is in ${['Nonexistent', 'Purchase', 'DrawPending', 'Dead'][currentGame.state]} state - cannot create VRF request`)
+                    } else {
+                        throw new Error(`Lottery is in ${['Nonexistent', 'Purchase', 'DrawPending', 'Dead'][currentGame.state]} state - cannot create VRF request`)
+                    }
                 }
 
             } else {
