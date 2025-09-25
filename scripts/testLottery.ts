@@ -612,13 +612,22 @@ async function fulfillPendingDraw(lottery: any, lotteryAddress: string, deployer
         )
 
         if (requestLog) {
+            console.log('✅ Found Anyrand log in draw receipt')
+            console.log('- Log address:', requestLog.address)
+            console.log('- Topics:', requestLog.topics)
+
+            let parsedSuccessfully = false
+
             try {
                 // Create Anyrand interface to parse the event properly
                 const anyrandABI = [
                     'event RandomnessRequested(uint256 indexed requestId, uint256 round, address indexed requester, bytes32 indexed pubKeyHash, uint256 callbackGasLimit)'
                 ]
-                const anyrand = new ethers.Contract(ANYRAND_ADDRESS, anyrandABI, deployer)
-                const requestEvent = anyrand.interface.parseLog(requestLog)
+                const anyrandInterface = new ethers.Interface(anyrandABI)
+                const requestEvent = anyrandInterface.parseLog({
+                    topics: requestLog.topics,
+                    data: requestLog.data
+                })
 
                 if (requestEvent && requestEvent.name === 'RandomnessRequested') {
                     requestId = requestEvent.args.requestId
@@ -626,16 +635,59 @@ async function fulfillPendingDraw(lottery: any, lotteryAddress: string, deployer
                     pubKeyHash = requestEvent.args.pubKeyHash
                     callbackGasLimit = Number(requestEvent.args.callbackGasLimit)
 
-                    console.log('✅ Successfully parsed VRF request from draw transaction!')
-                    console.log('- Request ID:', requestId.toString())
-                    console.log('- Round:', round.toString())
-                    console.log('- Pub Key Hash:', pubKeyHash)
-                    console.log('- Callback Gas Limit:', callbackGasLimit)
-                } else {
-                    throw new Error('Could not find RandomnessRequested event')
+                    console.log('✅ Successfully parsed VRF request using interface!')
+                    parsedSuccessfully = true
                 }
             } catch (parseError) {
-                console.log('❌ Failed to parse VRF event from draw receipt:', parseError)
+                console.log('⚠️ Interface parsing failed:', parseError instanceof Error ? parseError.message : parseError)
+                console.log('🔄 Falling back to manual extraction...')
+            }
+
+            if (!parsedSuccessfully) {
+                try {
+                    // Manual extraction from raw log data (same as forceRedraw section)
+                    requestId = BigInt(requestLog.topics[1])
+                    pubKeyHash = requestLog.topics[3]
+
+                    // Decode data field
+                    const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
+                        ['uint256', 'uint256', 'uint256', 'uint256'],
+                        requestLog.data
+                    )
+
+                    round = decoded[0]
+
+                    // Try to get callback gas limit from lottery contract
+                    try {
+                        callbackGasLimit = Number(await lottery.callbackGasLimit())
+                        console.log('Using lottery callbackGasLimit:', callbackGasLimit)
+                    } catch (gasLimitError) {
+                        // If decoded[1] looks like a reasonable gas limit (between 100k and 1M), use it
+                        if (decoded[1] >= 100000n && decoded[1] <= 1000000n) {
+                            callbackGasLimit = Number(decoded[1])
+                            console.log('Using decoded callbackGasLimit:', callbackGasLimit)
+                        } else {
+                            callbackGasLimit = 500000 // fallback
+                            console.log('Using fallback callbackGasLimit:', callbackGasLimit)
+                        }
+                    }
+
+                    console.log('✅ Manually extracted VRF request from draw receipt!')
+                    parsedSuccessfully = true
+
+                } catch (manualError) {
+                    console.log('❌ Manual extraction also failed:', manualError instanceof Error ? manualError.message : manualError)
+                }
+            }
+
+            if (parsedSuccessfully) {
+                console.log('📋 Parsed VRF request from draw transaction:')
+                console.log('- Request ID:', requestId.toString())
+                console.log('- Round:', round.toString())
+                console.log('- Pub Key Hash:', pubKeyHash)
+                console.log('- Callback Gas Limit:', callbackGasLimit)
+            } else {
+                console.log('❌ Could not parse VRF request from draw receipt by any method')
                 throw new Error('Cannot proceed without valid VRF request parameters from draw receipt')
             }
         } else {
