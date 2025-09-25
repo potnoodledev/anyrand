@@ -1,6 +1,6 @@
 import { ethers } from 'hardhat'
 import { getDrandBeaconRound, decodeG1 } from '../lib/drand'
-import { LooteryFactory__factory } from '../typechain-types'
+import { LooteryFactory__factory, DrandBeacon__factory } from '../typechain-types'
 import * as readline from 'readline'
 
 interface LotteryInfo {
@@ -382,7 +382,7 @@ async function main() {
 
         if (currentGameInfo.state === 2n) { // DrawPending
             console.log('\n⚠️ A draw is already pending. Will attempt to fulfill it now...')
-            await fulfillPendingDraw(lottery, lotteryAddress, deployer)
+            await fulfillPendingDraw(lottery, lotteryAddress, deployer, undefined)
             process.exit(0)
         }
         process.exit(1)
@@ -447,8 +447,8 @@ async function main() {
             }
 
             console.log('\nAttempting to estimate gas for draw() call...')
-            // Add buffer like quickstart for more reliable execution (comment out for now)
-            const bufferAmount = requestPrice; // + ethers.parseEther('0.00000000001')
+            // Add buffer like quickstart for more reliable execution
+            const bufferAmount = requestPrice + ethers.parseEther('0.0001')
             const valueToSend = bufferAmount
             let estimatedGas
             try {
@@ -544,7 +544,8 @@ async function main() {
             if (newGameInfo.state === 2n) {
                 console.log('✅ Game is now in DrawPending state')
                 console.log('\n🎲 Proceeding to fulfill the VRF request...')
-                await fulfillPendingDraw(lottery, lotteryAddress, deployer)
+                // Parse VRF request from the draw transaction receipt
+                await fulfillPendingDraw(lottery, lotteryAddress, deployer, drawReceipt)
             }
 
         } catch (error: any) {
@@ -594,22 +595,354 @@ async function main() {
     console.log('\n✅ Testing complete!')
 }
 
-async function fulfillPendingDraw(lottery: any, lotteryAddress: string, deployer: any) {
+async function fulfillPendingDraw(lottery: any, lotteryAddress: string, deployer: any, drawReceipt?: any) {
     console.log('\n==========================================')
     console.log('VRF FULFILLMENT')
     console.log('==========================================\n')
 
-    console.log('⚠️ Since we cannot find the original VRF request event,')
-    console.log('we will attempt to fulfill request ID 1 with known parameters.')
-    console.log('If this fails, you may need to wait 1 hour and use forceRedraw.\n')
-
-    // Use known parameters from the successful draw
-    const requestId = 1n // Based on the previous debug session
-    const round = 224092n // From the smart-contract-debugger output
-    const pubKeyHash = '0xf83ada85de740dd123163aef4df20a378211f9c6f82268151f268a5750040cf4'
-    const callbackGasLimit = 500000
-
+    let requestId: bigint, round: bigint, pubKeyHash: string, callbackGasLimit: number
     const ANYRAND_ADDRESS = process.env.ANYRAND_SCROLL_SEPOLIA_ADDRESS || '0xdFB68D4a5703bC99bEe0A8eb48fA12aBF1280aaC'
+
+    if (drawReceipt && drawReceipt.logs) {
+        console.log('🔍 Parsing VRF request from draw transaction...')
+
+        // Find the RandomnessRequested event from Anyrand - use the same approach as testAnyrandCall.ts
+        const requestLog = drawReceipt.logs.find((log: any) =>
+            log.address.toLowerCase() === ANYRAND_ADDRESS.toLowerCase()
+        )
+
+        if (requestLog) {
+            try {
+                // Create Anyrand interface to parse the event properly
+                const anyrandABI = [
+                    'event RandomnessRequested(uint256 indexed requestId, uint256 round, address indexed requester, bytes32 indexed pubKeyHash, uint256 callbackGasLimit)'
+                ]
+                const anyrand = new ethers.Contract(ANYRAND_ADDRESS, anyrandABI, deployer)
+                const requestEvent = anyrand.interface.parseLog(requestLog)
+
+                if (requestEvent && requestEvent.name === 'RandomnessRequested') {
+                    requestId = requestEvent.args.requestId
+                    round = requestEvent.args.round
+                    pubKeyHash = requestEvent.args.pubKeyHash
+                    callbackGasLimit = Number(requestEvent.args.callbackGasLimit)
+
+                    console.log('✅ Successfully parsed VRF request from draw transaction!')
+                    console.log('- Request ID:', requestId.toString())
+                    console.log('- Round:', round.toString())
+                    console.log('- Pub Key Hash:', pubKeyHash)
+                    console.log('- Callback Gas Limit:', callbackGasLimit)
+                } else {
+                    throw new Error('Could not find RandomnessRequested event')
+                }
+            } catch (parseError) {
+                console.log('❌ Failed to parse VRF event from draw receipt:', parseError)
+                throw new Error('Cannot proceed without valid VRF request parameters from draw receipt')
+            }
+        } else {
+            console.log('❌ No Anyrand event found in draw receipt')
+            throw new Error('Draw receipt does not contain RandomnessRequested event')
+        }
+    } else {
+        console.log('⚠️ No draw receipt provided - need to find the pending VRF request...')
+
+        // Find the most recent pending request for this lottery
+        try {
+            const anyrandABI = [
+                'event RandomnessRequested(uint256 indexed requestId, uint256 round, address indexed requester, bytes32 indexed pubKeyHash, uint256 callbackGasLimit)',
+                'function getRequestState(uint256 requestId) external view returns (uint8)'
+            ]
+            const anyrand = new ethers.Contract(ANYRAND_ADDRESS, anyrandABI, deployer)
+
+            // Search for recent RandomnessRequested events from this lottery
+            console.log('🔍 Searching for recent RandomnessRequested events from this lottery...')
+            const filter = anyrand.filters.RandomnessRequested(null, null, lotteryAddress)
+            const currentBlock = await deployer.provider!.getBlockNumber()
+
+            // Search last 5000 blocks - should cover several hours of activity
+            const events = await anyrand.queryFilter(filter, currentBlock - 5000, 'latest')
+
+            if (events.length === 0) {
+                console.log('⚠️ No RandomnessRequested events found in last 5000 blocks')
+                console.log('🔍 Checking lottery state to determine next action...')
+
+                // Check the current lottery state
+                const currentGame = await lottery.currentGame()
+                const gameData = await lottery.gameData(currentGame.id)
+
+                console.log(`- Current game state: ${['Nonexistent', 'Purchase', 'DrawPending', 'Dead'][currentGame.state]}`)
+                console.log(`- Tickets sold: ${gameData.ticketsSold}`)
+
+                if (currentGame.state === 2n) { // DrawPending - stuck state, needs forceRedraw
+                    console.log('🔄 Lottery is in DrawPending state - this indicates a stuck/failed draw')
+                    console.log('Will attempt to use forceRedraw() to reset and create a new draw...')
+
+                    try {
+                        // Create a new contract instance with the forceRedraw function
+                        const lotteryWithForceRedraw = new ethers.Contract(lotteryAddress, [
+                            'function currentGame() external view returns (tuple(uint8 state, uint248 id))',
+                            'function forceRedraw() external payable',
+                            'function getRequestPrice() external view returns (uint256)',
+                            'function draw() external payable'
+                        ], deployer)
+
+                        console.log('Checking if forceRedraw() is available and callable...')
+
+                        // Test if forceRedraw function exists and can be called
+                        const requestPrice = await lotteryWithForceRedraw.getRequestPrice()
+                        const forceRedrawValue = requestPrice * 2n // Use 2x price for safety as per forceRedrawAndFulfill.ts
+
+                        try {
+                            await lotteryWithForceRedraw.forceRedraw.estimateGas({
+                                value: forceRedrawValue
+                            })
+                            console.log('✅ forceRedraw() is available and callable')
+                        } catch (estimateError: any) {
+                            console.log('⚠️ Cannot call forceRedraw():', estimateError.message)
+                            console.log('This might be because the request is too recent (< 1 hour old)')
+                            throw new Error('forceRedraw() is not available - request may be too recent')
+                        }
+
+                        console.log('Calling forceRedraw() to reset the lottery...')
+                        const forceRedrawTx = await lotteryWithForceRedraw.forceRedraw({
+                            value: forceRedrawValue,
+                            gasLimit: 1000000
+                        })
+
+                        console.log('⏳ ForceRedraw transaction submitted:', forceRedrawTx.hash)
+                        const forceRedrawReceipt = await forceRedrawTx.wait()
+                        console.log('✅ ForceRedraw transaction confirmed!')
+
+                        // Check new state after forceRedraw
+                        const newGameInfo = await lotteryWithForceRedraw.currentGame()
+                        console.log(`- New game state after forceRedraw: ${['Nonexistent', 'Purchase', 'DrawPending', 'Dead'][newGameInfo.state]}`)
+
+                        if (newGameInfo.state !== 1n) {
+                            console.log(`⚠️ Expected Purchase state after forceRedraw, got: ${['Nonexistent', 'Purchase', 'DrawPending', 'Dead'][newGameInfo.state]}`)
+                            console.log('ForceRedraw completed but lottery is not in expected state')
+                        }
+
+                        // Check if forceRedraw created a new RandomnessRequested event
+                        const forceRedrawRequestLog = forceRedrawReceipt.logs.find((log: any) =>
+                            log.address.toLowerCase() === ANYRAND_ADDRESS.toLowerCase()
+                        )
+
+                        if (forceRedrawRequestLog) {
+                            console.log('🎉 forceRedraw() created a new RandomnessRequested event!')
+
+                            try {
+                                // Create a fresh Anyrand interface for parsing
+                                const freshAnyrandABI = [
+                                    'event RandomnessRequested(uint256 indexed requestId, uint256 round, address indexed requester, bytes32 indexed pubKeyHash, uint256 callbackGasLimit)'
+                                ]
+                                const parseInterface = new ethers.Interface(freshAnyrandABI)
+                                const requestEvent = parseInterface.parseLog(forceRedrawRequestLog)
+
+                                if (requestEvent && requestEvent.name === 'RandomnessRequested') {
+                                    requestId = requestEvent.args.requestId
+                                    round = requestEvent.args.round
+                                    pubKeyHash = requestEvent.args.pubKeyHash
+                                    callbackGasLimit = Number(requestEvent.args.callbackGasLimit)
+
+                                    console.log('✅ Successfully parsed VRF request from forceRedraw!')
+                                    console.log('- Request ID:', requestId.toString())
+                                    console.log('- Round:', round.toString())
+                                    console.log('- Pub Key Hash:', pubKeyHash)
+                                    console.log('- Callback Gas Limit:', callbackGasLimit)
+                                } else {
+                                    throw new Error('Event name does not match RandomnessRequested')
+                                }
+                            } catch (parseError) {
+                                console.log('⚠️ Failed to parse event with interface, extracting manually from raw log...')
+
+                                // Manual extraction from raw log data
+                                requestId = BigInt(forceRedrawRequestLog.topics[1])
+                                pubKeyHash = forceRedrawRequestLog.topics[3]
+
+                                // Decode data field (round, unknown params, callbackGasLimit)
+                                const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
+                                    ['uint256', 'uint256', 'uint256', 'uint256'],
+                                    forceRedrawRequestLog.data
+                                )
+                                round = decoded[0]
+                                // The 4th parameter looks like gas price, not callback gas limit
+                                // Let's use the lottery's configured callback gas limit instead
+                                console.log('Raw decoded data:', decoded.map(d => d.toString()))
+
+                                try {
+                                    callbackGasLimit = Number(await lottery.callbackGasLimit())
+                                    console.log('Using lottery callbackGasLimit:', callbackGasLimit)
+                                } catch (gasLimitError) {
+                                    callbackGasLimit = 500000 // fallback
+                                    console.log('Using fallback callbackGasLimit:', callbackGasLimit)
+                                }
+
+                                console.log('✅ Manually extracted VRF request from forceRedraw!')
+                                console.log('- Request ID:', requestId.toString())
+                                console.log('- Round:', round.toString())
+                                console.log('- Pub Key Hash:', pubKeyHash)
+                                console.log('- Callback Gas Limit:', callbackGasLimit)
+                            }
+                        } else {
+                            console.log('⚠️ forceRedraw() did not create a RandomnessRequested event')
+                            console.log('This might be expected depending on the lottery implementation')
+
+                            if (newGameInfo.state === 1n) {
+                                console.log('🎲 Lottery is now in Purchase state - will initiate a new draw...')
+
+                                const drawTx = await lotteryWithForceRedraw.draw({
+                                    value: requestPrice + ethers.parseEther('0.0001'),
+                                    gasLimit: 1000000
+                                })
+
+                                console.log('⏳ New draw transaction submitted:', drawTx.hash)
+                                const drawReceipt = await drawTx.wait()
+                                console.log('✅ New draw transaction confirmed!')
+
+                                // Parse the RandomnessRequested event from the new draw
+                                const drawRequestLog = drawReceipt.logs.find((log: any) =>
+                                    log.address.toLowerCase() === ANYRAND_ADDRESS.toLowerCase()
+                                )
+
+                                if (drawRequestLog) {
+                                    const requestEvent = anyrand.interface.parseLog(drawRequestLog)
+
+                                    if (requestEvent && requestEvent.name === 'RandomnessRequested') {
+                                        requestId = requestEvent.args.requestId
+                                        round = requestEvent.args.round
+                                        pubKeyHash = requestEvent.args.pubKeyHash
+                                        callbackGasLimit = Number(requestEvent.args.callbackGasLimit)
+
+                                        console.log('✅ Successfully created and parsed VRF request from new draw!')
+                                        console.log('- Request ID:', requestId.toString())
+                                        console.log('- Round:', round.toString())
+                                        console.log('- Pub Key Hash:', pubKeyHash)
+                                        console.log('- Callback Gas Limit:', callbackGasLimit)
+                                    } else {
+                                        throw new Error('Could not parse RandomnessRequested event from new draw')
+                                    }
+                                } else {
+                                    throw new Error('No RandomnessRequested event found in new draw transaction')
+                                }
+                            } else {
+                                throw new Error('Cannot proceed - lottery not in correct state after forceRedraw')
+                            }
+                        }
+
+                    } catch (forceRedrawError) {
+                        console.log('❌ Failed to force redraw:', forceRedrawError instanceof Error ? forceRedrawError.message : forceRedrawError)
+                        throw new Error('Cannot recover from DrawPending state using forceRedraw')
+                    }
+
+                } else if (currentGame.state === 1n) { // Purchase state
+                    console.log('🎲 Lottery is in Purchase state - will initiate a regular draw...')
+
+                    // Check timing requirements
+                    const gamePeriod = await lottery.gamePeriod()
+                    const gameStartedAt = Number(gameData.startedAt)
+                    const drawScheduledAt = gameStartedAt + Number(gamePeriod)
+                    const currentTime = Math.floor(Date.now() / 1000)
+
+                    if (currentTime < drawScheduledAt) {
+                        const waitTime = drawScheduledAt - currentTime
+                        throw new Error(`Cannot draw yet. Must wait ${waitTime} seconds until ${new Date(drawScheduledAt * 1000).toLocaleString()}`)
+                    }
+
+                    console.log('✅ Draw timing requirements met - initiating draw...')
+
+                    try {
+                        const requestPrice = await lottery.getRequestPrice()
+                        console.log('VRF request price:', ethers.formatEther(requestPrice), 'ETH')
+
+                        const bufferAmount = requestPrice + ethers.parseEther('0.0001')
+
+                        const drawTx = await lottery.draw({
+                            value: bufferAmount,
+                            gasLimit: 1000000
+                        })
+
+                        console.log('⏳ Draw transaction submitted:', drawTx.hash)
+                        const drawReceipt = await drawTx.wait()
+                        console.log('✅ Draw transaction confirmed!')
+
+                        // Parse the RandomnessRequested event from this new draw
+                        const requestLog = drawReceipt.logs.find((log: any) =>
+                            log.address.toLowerCase() === ANYRAND_ADDRESS.toLowerCase()
+                        )
+
+                        if (requestLog) {
+                            const requestEvent = anyrand.interface.parseLog(requestLog)
+
+                            if (requestEvent && requestEvent.name === 'RandomnessRequested') {
+                                requestId = requestEvent.args.requestId
+                                round = requestEvent.args.round
+                                pubKeyHash = requestEvent.args.pubKeyHash
+                                callbackGasLimit = Number(requestEvent.args.callbackGasLimit)
+
+                                console.log('✅ Successfully created and parsed VRF request!')
+                                console.log('- Request ID:', requestId.toString())
+                                console.log('- Round:', round.toString())
+                                console.log('- Pub Key Hash:', pubKeyHash)
+                                console.log('- Callback Gas Limit:', callbackGasLimit)
+                            } else {
+                                throw new Error('Could not parse RandomnessRequested event from draw')
+                            }
+                        } else {
+                            throw new Error('No RandomnessRequested event found in draw transaction')
+                        }
+
+                    } catch (drawError) {
+                        console.log('❌ Failed to initiate draw:', drawError instanceof Error ? drawError.message : drawError)
+                        throw new Error('Cannot create VRF request through regular draw')
+                    }
+
+                } else {
+                    throw new Error(`Lottery is in ${['Nonexistent', 'Purchase', 'DrawPending', 'Dead'][currentGame.state]} state - cannot create VRF request`)
+                }
+
+            } else {
+                console.log(`Found ${events.length} RandomnessRequested event(s) for this lottery`)
+
+                // Find the most recent pending request
+                let foundPendingRequest = false
+                for (let i = events.length - 1; i >= 0; i--) {
+                    const event = events[i]
+                    const testRequestId = event.args.requestId
+
+                    try {
+                        const requestState = await anyrand.getRequestState(testRequestId)
+                        console.log(`- Request ${testRequestId}: state = ${['Nonexistent', 'Pending', 'Fulfilled', 'Expired'][requestState]}`)
+
+                        if (requestState === 1n) { // Pending
+                            requestId = testRequestId
+                            round = event.args.round
+                            pubKeyHash = event.args.pubKeyHash
+                            callbackGasLimit = Number(event.args.callbackGasLimit)
+
+                            console.log('✅ Found pending VRF request!')
+                            console.log('- Request ID:', requestId.toString())
+                            console.log('- Round:', round.toString())
+                            console.log('- Pub Key Hash:', pubKeyHash)
+                            console.log('- Callback Gas Limit:', callbackGasLimit)
+
+                            foundPendingRequest = true
+                            break
+                        }
+                    } catch (stateError) {
+                        console.log(`- Could not check state for request ${testRequestId}`)
+                        continue
+                    }
+                }
+
+                if (!foundPendingRequest) {
+                    throw new Error('No pending VRF requests found for this lottery. All requests may have been fulfilled or expired.')
+                }
+            }
+
+        } catch (searchError) {
+            console.log('❌ Failed to find pending VRF request:', searchError instanceof Error ? searchError.message : searchError)
+            throw new Error('Cannot proceed without finding a valid pending VRF request')
+        }
+    }
     console.log('Anyrand address:', ANYRAND_ADDRESS)
 
     // ABI for Anyrand contract
@@ -648,24 +981,46 @@ async function fulfillPendingDraw(lottery: any, lotteryAddress: string, deployer
         console.log('Warning: Could not check request state:', error)
     }
 
-    // Hardcode evmnet beacon timing values (to avoid beacon contract issues)
-    const beaconGenesis = 1713244728n // evmnet genesis timestamp
-    const beaconPeriod = 3n // 3 seconds per round
+    // Get beacon parameters from the actual beacon contract
+    const BEACON_ADDRESS = process.env.BEACON_SCROLL_SEPOLIA_ADDRESS
+    let beaconGenesis: bigint
+    let beaconPeriod: bigint
+
+    if (BEACON_ADDRESS) {
+        try {
+            const beacon = DrandBeacon__factory.connect(BEACON_ADDRESS, deployer)
+            beaconGenesis = await beacon.genesisTimestamp()
+            beaconPeriod = await beacon.period()
+            console.log('✅ Retrieved beacon parameters from contract:')
+            console.log('- Genesis timestamp:', beaconGenesis.toString())
+            console.log('- Period:', beaconPeriod.toString(), 'seconds')
+        } catch (beaconError: any) {
+            console.log('⚠️ Failed to get beacon parameters from contract:', beaconError.message)
+            console.log('Using fallback evmnet beacon timing values...')
+            beaconGenesis = 1713244728n // evmnet genesis timestamp
+            beaconPeriod = 3n // 3 seconds per round
+        }
+    } else {
+        console.log('⚠️ BEACON_SCROLL_SEPOLIA_ADDRESS not found in .env')
+        console.log('Using fallback evmnet beacon timing values...')
+        beaconGenesis = 1713244728n // evmnet genesis timestamp
+        beaconPeriod = 3n // 3 seconds per round
+    }
 
     // Calculate when the round will be available
     const roundTimestamp = Number(beaconGenesis) + (Number(round) - 1) * Number(beaconPeriod)
     const currentTime = Math.floor(Date.now() / 1000)
     const waitTime = Math.max(0, roundTimestamp - currentTime)
 
-    console.log('Round timing:')
+    console.log('\nRound timing:')
     console.log('- Round', round.toString(), 'available at:', new Date(roundTimestamp * 1000).toLocaleString())
     console.log('- Current time:', new Date(currentTime * 1000).toLocaleString())
 
     if (waitTime > 0) {
-        console.log(`- Waiting ${waitTime} seconds for round availability...\n`)
+        console.log(`- Waiting ${waitTime} seconds for round availability...`)
 
-        // Wait for the round to be available
-        if (waitTime <= 60) { // Wait up to 60 seconds
+        // Only wait up to 60 seconds for testing
+        if (waitTime <= 60) {
             for (let i = waitTime; i > 0; i--) {
                 process.stdout.write(`\r⏳ Time remaining: ${i} seconds...`)
                 await new Promise(resolve => setTimeout(resolve, 1000))
