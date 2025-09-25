@@ -382,7 +382,7 @@ async function main() {
 
         if (currentGameInfo.state === 2n) { // DrawPending
             console.log('\n⚠️ A draw is already pending. Will attempt to fulfill it now...')
-            await fulfillPendingDraw(lottery, lotteryAddress, deployer, undefined)
+            await fulfillPendingDraw(lottery, lotteryAddress, deployer, undefined, currentGameInfo)
             process.exit(0)
         }
         process.exit(1)
@@ -545,7 +545,7 @@ async function main() {
                 console.log('✅ Game is now in DrawPending state')
                 console.log('\n🎲 Proceeding to fulfill the VRF request...')
                 // Parse VRF request from the draw transaction receipt
-                await fulfillPendingDraw(lottery, lotteryAddress, deployer, drawReceipt)
+                await fulfillPendingDraw(lottery, lotteryAddress, deployer, drawReceipt, currentGameInfo)
             }
 
         } catch (error: any) {
@@ -595,7 +595,7 @@ async function main() {
     console.log('\n✅ Testing complete!')
 }
 
-async function fulfillPendingDraw(lottery: any, lotteryAddress: string, deployer: any, drawReceipt?: any) {
+async function fulfillPendingDraw(lottery: any, lotteryAddress: string, deployer: any, drawReceipt?: any, gameInfo?: any) {
     console.log('\n==========================================')
     console.log('VRF FULFILLMENT')
     console.log('==========================================\n')
@@ -1309,30 +1309,103 @@ async function fulfillPendingDraw(lottery: any, lotteryAddress: string, deployer
             const callbackSuccess = fulfillEvent.args.callbackSuccess
             const actualGasUsed = fulfillEvent.args.actualGasUsed
 
-            console.log('\nFulfillment results:')
+            console.log('\n🎲 VRF Fulfillment Results:')
             console.log('- Random value:', randomness.toString())
             console.log('- Random value (hex):', '0x' + randomness.toString(16))
             console.log('- Callback success:', callbackSuccess ? '✅ Yes' : '❌ No')
             console.log('- Gas used for callback:', actualGasUsed.toString())
         }
 
-        // Check the new lottery state
-        console.log('\n📊 Checking lottery state after fulfillment...')
+        // Check the new lottery state and get draw results
+        console.log('\n🎰 Lottery Draw Results:')
         const newGameInfo = await lottery.currentGame()
         const newGameData = await lottery.gameData(newGameInfo.id)
 
-        console.log('- Game ID:', newGameInfo.id.toString())
-        console.log('- Game State:', ['Nonexistent', 'Purchase', 'DrawPending', 'Dead'][newGameInfo.state])
+        // Get the previous (completed) game data
+        // The completed game should be the one that was just drawn (before fulfillment created a new game)
+        let previousGameId: bigint
+        if (gameInfo && gameInfo.id) {
+            // Use the game info passed in
+            previousGameId = gameInfo.id
+        } else if (newGameInfo.id > 0n) {
+            // If a new game was created, the previous game is newGameInfo.id - 1
+            previousGameId = newGameInfo.id - 1n
+        } else {
+            // Fallback to current game if no new game was created
+            previousGameId = newGameInfo.id
+        }
+        let completedGameData
+        try {
+            completedGameData = await lottery.gameData(previousGameId)
+        } catch (error) {
+            console.log('⚠️ Could not fetch completed game data')
+            completedGameData = null
+        }
 
-        if (newGameData.winningPickId > 0) {
-            console.log('\n🎉 WINNER SELECTED!')
-            console.log('- Winning Pick ID:', newGameData.winningPickId.toString())
+        console.log('- Previous Game ID:', previousGameId.toString())
+        if (completedGameData) {
+            console.log('- Tickets Sold:', completedGameData.ticketsSold.toString())
 
-            // If the game has reset to Purchase state, a new game has started
-            if (newGameInfo.state === 1n) {
-                console.log('\n✅ Lottery draw completed successfully!')
-                console.log('A new game has automatically started.')
+            // Calculate total jackpot
+            try {
+                const ticketPrice = await lottery.ticketPrice()
+                const totalJackpot = ticketPrice * completedGameData.ticketsSold
+                console.log('- Total Jackpot:', ethers.formatEther(totalJackpot), 'ETH')
+            } catch (priceError) {
+                console.log('- Could not calculate total jackpot')
             }
+
+            // Check for winning pick and calculate winning numbers
+            if (completedGameData.winningPickId && completedGameData.winningPickId > 0n) {
+                console.log('\n🎉 WINNING PICK SELECTED!')
+                console.log('- Winning Pick ID:', completedGameData.winningPickId.toString())
+
+                // Calculate winning numbers (assuming 6 numbers from 1-59 format)
+                try {
+                    const winningNumbers = []
+                    let pickId = completedGameData.winningPickId
+
+                    // Extract 6 numbers from the pick ID
+                    for (let i = 0; i < 6; i++) {
+                        const number = (pickId % 59n) + 1n
+                        winningNumbers.unshift(number.toString()) // Add to front to get correct order
+                        pickId = pickId / 59n
+                    }
+
+                    console.log('- Winning Numbers: [' + winningNumbers.join(', ') + ']')
+                    console.log('- Numbers drawn from random value:', '0x' + randomness.toString(16))
+                } catch (calcError) {
+                    console.log('- Could not calculate winning numbers from pick ID')
+                }
+            } else {
+                console.log('\n⚪ No winning pick (no tickets sold or special case)')
+            }
+        }
+
+        // Check if there are any claimable winnings for the caller
+        try {
+            const claimable = await lottery.claimable(deployer.address)
+            if (claimable > 0n) {
+                console.log('\n💰 You have winnings to claim!')
+                console.log('- Claimable amount:', ethers.formatEther(claimable), 'ETH')
+                console.log('- Use lottery.claim() to collect your winnings')
+            }
+        } catch (claimError) {
+            // claimable function might not exist or revert - that's ok
+        }
+
+        // Show new game state
+        console.log('\n📊 Post-Draw Lottery State:')
+        console.log('- Current Game ID:', newGameInfo.id.toString())
+        console.log('- Current State:', ['Nonexistent', 'Purchase', 'DrawPending', 'Dead'][newGameInfo.state])
+
+        if (newGameInfo.state === 1n) {
+            console.log('✅ Lottery draw completed successfully!')
+            console.log('   New game has automatically started and is accepting tickets.')
+        } else if (newGameInfo.state === 0n) {
+            console.log('⚪ Lottery has ended (no new game started)')
+        } else if (newGameInfo.state === 2n) {
+            console.log('⚠️ Unexpected: Still in DrawPending state')
         }
 
     } catch (error: any) {
