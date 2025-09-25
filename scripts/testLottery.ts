@@ -711,28 +711,108 @@ async function fulfillPendingDraw(lottery: any, lotteryAddress: string, deployer
 
                     if (logs.length > 0) {
                         console.log('✅ Direct RPC call found events! Issue was with ethers filter.')
-                        // Parse the first event manually
-                        const log = logs[0]
-                        requestId = BigInt(log.topics[1])
-                        pubKeyHash = log.topics[3]
+                        console.log(`📊 Found ${logs.length} RandomnessRequested events for this lottery`)
 
-                        // Decode the data field
-                        const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
-                            ['uint256', 'uint256', 'uint256', 'uint256'],
-                            log.data
-                        )
-                        round = decoded[0]
+                        // Check all events to find pending ones
+                        let foundPendingRequest = false
+                        console.log('\n🔍 Analyzing all requests to find pending ones:')
 
-                        // Use lottery's callback gas limit
-                        callbackGasLimit = Number(await lottery.callbackGasLimit())
+                        for (let i = logs.length - 1; i >= 0; i--) {
+                            const log = logs[i]
+                            const logRequestId = BigInt(log.topics[1])
+                            const logPubKeyHash = log.topics[3]
 
-                        console.log('📋 Found pending VRF request via direct RPC:')
-                        console.log('- Request ID:', requestId.toString())
-                        console.log('- Round:', round.toString())
-                        console.log('- Pub Key Hash:', pubKeyHash)
-                        console.log('- Callback Gas Limit:', callbackGasLimit)
+                            // Decode the data field
+                            const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
+                                ['uint256', 'uint256', 'uint256', 'uint256'],
+                                log.data
+                            )
+                            const logRound = decoded[0]
 
-                        foundViaRPC = true
+                            console.log(`\n  Event ${i + 1}/${logs.length}:`)
+                            console.log(`    - Request ID: ${logRequestId}`)
+                            console.log(`    - Round: ${logRound}`)
+                            console.log(`    - Block: ${parseInt(log.blockNumber, 16)}`)
+                            console.log(`    - Transaction: ${log.transactionHash}`)
+
+                            // Check the state of this request
+                            try {
+                                const requestState = await anyrand.getRequestState(logRequestId)
+                                const stateNames = ['Nonexistent', 'Pending', 'Fulfilled', 'Expired']
+                                console.log(`    - State: ${stateNames[requestState]} (${requestState})`)
+
+                                if (requestState === 1n && !foundPendingRequest) { // First pending request
+                                    requestId = logRequestId
+                                    round = logRound
+                                    pubKeyHash = logPubKeyHash
+                                    callbackGasLimit = Number(await lottery.callbackGasLimit())
+
+                                    console.log(`    ✅ This request is PENDING - will use this one!`)
+                                    foundPendingRequest = true
+                                } else if (requestState === 1n) {
+                                    console.log(`    ⚠️ This request is also pending, but using the first one found`)
+                                }
+                            } catch (stateError) {
+                                console.log(`    ❌ Could not check state: ${stateError}`)
+                            }
+                        }
+
+                        if (foundPendingRequest) {
+                            console.log('\n📋 Selected pending VRF request:')
+                            console.log('- Request ID:', requestId.toString())
+                            console.log('- Round:', round.toString())
+                            console.log('- Pub Key Hash:', pubKeyHash)
+                            console.log('- Callback Gas Limit:', callbackGasLimit)
+                            foundViaRPC = true
+                        } else {
+                            console.log('\n❌ No pending requests found among all events')
+                            console.log('All requests for this lottery have already been fulfilled or expired')
+
+                            // If lottery is in DrawPending but no pending requests, this is suspicious
+                            const currentGame = await lottery.currentGame()
+                            if (currentGame.state === 2n) {
+                                console.log('\n🚨 INCONSISTENCY DETECTED:')
+                                console.log('- Lottery state: DrawPending (waiting for VRF)')
+                                console.log('- All VRF requests: Already fulfilled/expired')
+                                console.log('- This suggests the lottery might be stuck or there might be a newer request')
+
+                                // Check for very recent events (maybe in last 100 blocks)
+                                console.log('\n🔍 Checking for very recent requests (last 100 blocks)...')
+                                const recentLogs = await provider.send('eth_getLogs', [{
+                                    address: ANYRAND_ADDRESS,
+                                    fromBlock: ethers.toBeHex(currentBlock - 100),
+                                    toBlock: 'latest',
+                                    topics: [
+                                        eventSignature,
+                                        null,
+                                        paddedLotteryAddress,
+                                        null
+                                    ]
+                                }])
+
+                                if (recentLogs.length > 0) {
+                                    console.log(`Found ${recentLogs.length} very recent requests`)
+                                    const recentLog = recentLogs[recentLogs.length - 1]
+                                    const recentRequestId = BigInt(recentLog.topics[1])
+                                    const recentState = await anyrand.getRequestState(recentRequestId)
+                                    console.log(`Most recent request ${recentRequestId} state: ${['Nonexistent', 'Pending', 'Fulfilled', 'Expired'][recentState]}`)
+
+                                    if (recentState === 1n) {
+                                        console.log('✅ Found a pending recent request!')
+                                        // Use this recent request
+                                        const recentDecoded = ethers.AbiCoder.defaultAbiCoder().decode(
+                                            ['uint256', 'uint256', 'uint256', 'uint256'],
+                                            recentLog.data
+                                        )
+                                        requestId = recentRequestId
+                                        round = recentDecoded[0]
+                                        pubKeyHash = recentLog.topics[3]
+                                        callbackGasLimit = Number(await lottery.callbackGasLimit())
+                                        foundViaRPC = true
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         console.log('❌ Even direct RPC call found no events')
                     }
