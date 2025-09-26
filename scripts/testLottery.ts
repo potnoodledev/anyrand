@@ -1316,70 +1316,153 @@ async function fulfillPendingDraw(lottery: any, lotteryAddress: string, deployer
             console.log('- Gas used for callback:', actualGasUsed.toString())
         }
 
-        // Check the new lottery state and get draw results
-        console.log('\n🎰 Lottery Draw Results:')
-        const newGameInfo = await lottery.currentGame()
-        const newGameData = await lottery.gameData(newGameInfo.id)
+        // Parse comprehensive lottery events from the fulfillment receipt
+        console.log('\n🎰 Analyzing Lottery Draw Results from Events...')
 
-        // Get the previous (completed) game data
-        // The completed game should be the one that was just drawn (before fulfillment created a new game)
-        let previousGameId: bigint
-        if (gameInfo && gameInfo.id) {
-            // Use the game info passed in
-            previousGameId = gameInfo.id
-        } else if (newGameInfo.id > 0n) {
-            // If a new game was created, the previous game is newGameInfo.id - 1
-            previousGameId = newGameInfo.id - 1n
-        } else {
-            // Fallback to current game if no new game was created
-            previousGameId = newGameInfo.id
-        }
-        let completedGameData
-        try {
-            completedGameData = await lottery.gameData(previousGameId)
-        } catch (error) {
-            console.log('⚠️ Could not fetch completed game data')
-            completedGameData = null
-        }
+        // Extended lottery ABI with all the events we need
+        const lotteryEventABI = [
+            'event JackpotRollover(uint256 indexed gameId, uint256 unclaimedPayouts, uint256 currentJackpot, uint256 nextUnclaimedPayouts, uint256 nextJackpot)',
+            'event GameFinalised(uint256 gameId, uint8[] winningPick)',
+            'event WinningsClaimed(uint256 indexed tokenId, uint256 indexed gameId, address whomst, uint256 value)',
+            'event BeneficiaryPaid(uint256 indexed gameId, address indexed beneficiary, uint256 value)',
+            'event ConsolationClaimed(uint256 indexed tokenId, uint256 indexed gameId, address whomst, uint256 value)',
+            'event TicketPurchased(uint256 indexed gameId, address indexed whomst, uint256 indexed tokenId, uint8[] pick)',
+            'event DrawSkipped(uint256 indexed gameId)',
+            'event ApocalypseModeActivated(uint256 indexed gameId)'
+        ]
 
-        console.log('- Previous Game ID:', previousGameId.toString())
-        if (completedGameData) {
-            console.log('- Tickets Sold:', completedGameData.ticketsSold.toString())
+        const lotteryEventInterface = new ethers.Interface(lotteryEventABI)
 
-            // Calculate total jackpot
-            try {
-                const ticketPrice = await lottery.ticketPrice()
-                const totalJackpot = ticketPrice * completedGameData.ticketsSold
-                console.log('- Total Jackpot:', ethers.formatEther(totalJackpot), 'ETH')
-            } catch (priceError) {
-                console.log('- Could not calculate total jackpot')
-            }
+        // Find all lottery-related events in the fulfillment receipt
+        const lotteryEvents: { name: string; args: any; event: any }[] = []
 
-            // Check for winning pick and calculate winning numbers
-            if (completedGameData.winningPickId && completedGameData.winningPickId > 0n) {
-                console.log('\n🎉 WINNING PICK SELECTED!')
-                console.log('- Winning Pick ID:', completedGameData.winningPickId.toString())
-
-                // Calculate winning numbers (assuming 6 numbers from 1-59 format)
+        for (const log of fulfillReceipt!.logs) {
+            if (log.address.toLowerCase() === lotteryAddress.toLowerCase()) {
                 try {
-                    const winningNumbers = []
-                    let pickId = completedGameData.winningPickId
-
-                    // Extract 6 numbers from the pick ID
-                    for (let i = 0; i < 6; i++) {
-                        const number = (pickId % 59n) + 1n
-                        winningNumbers.unshift(number.toString()) // Add to front to get correct order
-                        pickId = pickId / 59n
+                    const parsed = lotteryEventInterface.parseLog({
+                        topics: log.topics,
+                        data: log.data
+                    })
+                    if (parsed) {
+                        lotteryEvents.push({ name: parsed.name, args: parsed.args, event: parsed })
                     }
-
-                    console.log('- Winning Numbers: [' + winningNumbers.join(', ') + ']')
-                    console.log('- Numbers drawn from random value:', '0x' + randomness.toString(16))
-                } catch (calcError) {
-                    console.log('- Could not calculate winning numbers from pick ID')
+                } catch (parseError) {
+                    // Skip events we can't parse
                 }
-            } else {
-                console.log('\n⚪ No winning pick (no tickets sold or special case)')
             }
+        }
+
+        console.log(`📊 Found ${lotteryEvents.length} lottery events in fulfillment transaction`)
+
+        // Determine the completed game ID
+        let completedGameId: bigint
+        if (gameInfo && gameInfo.id !== undefined) {
+            completedGameId = gameInfo.id
+        } else {
+            // Try to find it from the events
+            const gameFinalisedEvent = lotteryEvents.find(e => e.name === 'GameFinalised')
+            if (gameFinalisedEvent) {
+                completedGameId = gameFinalisedEvent.args.gameId
+            } else {
+                console.log('⚠️ Could not determine completed game ID')
+                completedGameId = 0n
+            }
+        }
+
+        console.log(`\n🎯 Results for Game ID: ${completedGameId.toString()}`)
+
+        // Parse JackpotRollover event to understand prize distribution
+        const jackpotRolloverEvent = lotteryEvents.find(e => e.name === 'JackpotRollover')
+        if (jackpotRolloverEvent) {
+            const { gameId, unclaimedPayouts, currentJackpot, nextUnclaimedPayouts, nextJackpot } = jackpotRolloverEvent.args
+
+            console.log('\n💰 Prize Distribution (JackpotRollover):')
+            console.log(`- Game ID: ${gameId.toString()}`)
+            console.log(`- Previous Unclaimed Payouts: ${ethers.formatEther(unclaimedPayouts)} ETH`)
+            console.log(`- Previous Jackpot: ${ethers.formatEther(currentJackpot)} ETH`)
+            console.log(`- Next Unclaimed Payouts: ${ethers.formatEther(nextUnclaimedPayouts)} ETH`)
+            console.log(`- Next Jackpot: ${ethers.formatEther(nextJackpot)} ETH`)
+
+            // Determine if there were winners based on the rollover pattern
+            if (nextJackpot > 0n && nextUnclaimedPayouts === 0n) {
+                console.log('📈 Result: NO WINNERS - Prizes rolled over to next jackpot')
+            } else if (nextJackpot === 0n && nextUnclaimedPayouts > 0n) {
+                console.log('🎉 Result: WINNERS FOUND - Prizes available for claiming!')
+            } else {
+                console.log('🔄 Result: Mixed outcome or special case')
+            }
+        } else {
+            console.log('\n⚠️ No JackpotRollover event found - could not determine prize distribution')
+        }
+
+        // Parse GameFinalised event to get the actual winning numbers
+        const gameFinalisedEvent = lotteryEvents.find(e => e.name === 'GameFinalised')
+        if (gameFinalisedEvent) {
+            const { gameId, winningPick } = gameFinalisedEvent.args
+
+            console.log('\n🎲 Winning Numbers (GameFinalised):')
+            console.log(`- Game ID: ${gameId.toString()}`)
+            console.log(`- Winning Pick: [${winningPick.join(', ')}]`)
+            console.log(`- Random value used: 0x${randomness.toString(16)}`)
+        } else {
+            console.log('\n⚠️ No GameFinalised event found - could not determine winning numbers')
+        }
+
+        // Parse WinningsClaimed events to see individual winners
+        const winningsClaimedEvents = lotteryEvents.filter(e => e.name === 'WinningsClaimed')
+        if (winningsClaimedEvents.length > 0) {
+            console.log('\n🏆 Individual Winners (WinningsClaimed):')
+            let totalWinnings = 0n
+            for (const event of winningsClaimedEvents) {
+                const { tokenId, gameId, whomst, value } = event.args
+                console.log(`  - Token #${tokenId}: ${whomst} won ${ethers.formatEther(value)} ETH`)
+                totalWinnings += value
+            }
+            console.log(`- Total winnings claimed: ${ethers.formatEther(totalWinnings)} ETH`)
+            console.log(`- Number of winning tickets: ${winningsClaimedEvents.length}`)
+        } else {
+            console.log('\n⚪ No WinningsClaimed events - no immediate winners (prizes may be claimable later)')
+        }
+
+        // Parse BeneficiaryPaid events to see community fees
+        const beneficiaryPaidEvents = lotteryEvents.filter(e => e.name === 'BeneficiaryPaid')
+        if (beneficiaryPaidEvents.length > 0) {
+            console.log('\n🏘️ Community Benefits (BeneficiaryPaid):')
+            let totalBeneficiaryPayouts = 0n
+            for (const event of beneficiaryPaidEvents) {
+                const { gameId, beneficiary, value } = event.args
+                console.log(`  - ${beneficiary}: ${ethers.formatEther(value)} ETH (community fee)`)
+                totalBeneficiaryPayouts += value
+            }
+            console.log(`- Total community benefits: ${ethers.formatEther(totalBeneficiaryPayouts)} ETH`)
+        }
+
+        // Parse other relevant events
+        const otherEvents = lotteryEvents.filter(e =>
+            !['JackpotRollover', 'GameFinalised', 'WinningsClaimed', 'BeneficiaryPaid'].includes(e.name)
+        )
+        if (otherEvents.length > 0) {
+            console.log('\n📋 Other Events:')
+            for (const event of otherEvents) {
+                console.log(`- ${event.name}`)
+            }
+        }
+
+        // Get basic game statistics
+        try {
+            const completedGameData = await lottery.gameData(completedGameId)
+            console.log('\n📊 Game Statistics:')
+            console.log(`- Tickets Sold: ${completedGameData.ticketsSold.toString()}`)
+
+            const ticketPrice = await lottery.ticketPrice()
+            const totalSales = ticketPrice * completedGameData.ticketsSold
+            console.log(`- Total Ticket Sales: ${ethers.formatEther(totalSales)} ETH`)
+
+            if (completedGameData.winningPickId > 0n) {
+                console.log(`- Winning Pick ID: ${completedGameData.winningPickId.toString()}`)
+            }
+        } catch (error) {
+            console.log('\n⚠️ Could not fetch basic game statistics')
         }
 
         // Check if there are any claimable winnings for the caller
