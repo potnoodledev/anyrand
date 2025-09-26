@@ -43,16 +43,23 @@ async function main() {
     }
 
     // Create lottery configuration
-    const name = 'Test Lottery'
-    const symbol = 'TEST'
-    const pickLength = 5 // Pick 5 numbers
-    const maxBallValue = 36 // From 1 to 36
+    const pickLength = 3 // Pick 3 numbers
+    const maxBallValue = 3 // From 1 to 3
     const gamePeriod = 120 // 2 minutes
     const ticketPrice = 1n // 1 wei per ticket (minimal cost)
     const communityFeeBps = 5000 // 50% to community
     const prizeToken = wethAddress
     const seedJackpotDelay = 1 // 1 second delay (minimum)
     const seedJackpotMinValue = 1 // 1 wei minimum
+
+    // Generate meaningful lottery name based on configuration and date
+    const now = new Date()
+    const dateStr = now.toISOString().split('T')[0] // YYYY-MM-DD format
+    const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '') // HHMMSS format
+    const durationMinutes = gamePeriod / 60
+
+    const name = `Lottery_${dateStr}_${timeStr}_Pick${pickLength}_Max${maxBallValue}_${durationMinutes}min`
+    const symbol = `L${pickLength}${maxBallValue}${durationMinutes}`
 
     console.log('\nLottery Configuration:')
     console.log('- Name:', name)
@@ -113,9 +120,10 @@ async function main() {
 
     console.log('\nRegistering deployer as beneficiary...')
     try {
+        const beneficiaryName = `Creator_${pickLength}of${maxBallValue}_${durationMinutes}m`
         const setBeneficiaryTx = await lottery.setBeneficiary(
             deployer.address,
-            'Test Beneficiary',
+            beneficiaryName,
             true
         )
         await setBeneficiaryTx.wait()
